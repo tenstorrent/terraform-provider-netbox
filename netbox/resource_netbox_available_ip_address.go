@@ -109,27 +109,18 @@ This resource will retrieve the next available IP address from a given prefix or
 func resourceNetboxAvailableIPAddressCreate(d *schema.ResourceData, m interface{}) error {
 	api := m.(*providerState)
 	prefixID := int64(d.Get("prefix_id").(int))
-	vrfID := int64(int64(d.Get("vrf_id").(int)))
 	rangeID := int64(d.Get("ip_range_id").(int))
 	tenantID := int64(d.Get("tenant_id").(int))
-	
-	nestedvrf := models.NestedVRF{
-		ID: vrfID,
-	}
-	
-	data := models.AvailableIP{
-		Vrf: &nestedvrf,
-	}
-	
+
+	data := models.WritableAvailableIP{}
+
 	// Tenant is now supported in the creation request (optional for backwards compatibility)
 	if tenantID != 0 {
-		nestedtenant := models.NestedTenant{
-			ID: tenantID,
-		}
-		data.Tenant = &nestedtenant
+		data.Tenant = tenantID
 	}
+
 	if prefixID != 0 {
-		params := ipam.NewIpamPrefixesAvailableIpsCreateParams().WithID(prefixID).WithData([]*models.AvailableIP{&data})
+		params := ipam.NewIpamPrefixesAvailableIpsCreateParams().WithID(prefixID).WithData([]*models.WritableAvailableIP{&data})
 		res, err := api.Ipam.IpamPrefixesAvailableIpsCreate(params, nil)
 		if err != nil {
 			return err
@@ -142,7 +133,7 @@ func resourceNetboxAvailableIPAddressCreate(d *schema.ResourceData, m interface{
 		d.Set("ip_address", *res.Payload[0].Address)
 	}
 	if rangeID != 0 {
-		params := ipam.NewIpamIPRangesAvailableIpsCreateParams().WithID(rangeID).WithData([]*models.AvailableIP{&data})
+		params := ipam.NewIpamIPRangesAvailableIpsCreateParams().WithID(rangeID).WithData([]*models.WritableAvailableIP{&data})
 		res, err := api.Ipam.IpamIPRangesAvailableIpsCreate(params, nil)
 		if err != nil {
 			return err
