@@ -284,6 +284,79 @@ resource "netbox_available_ip_address" "test" {
 	})
 }
 
+func TestAccNetboxAvailableIPAddress_withTenant(t *testing.T) {
+	testPrefix := "1.9.1.0/24"
+	testIP := "1.9.1.1/24"
+	testSlug := "av_ipa_tenant"
+	testName := testAccGetTestName(testSlug)
+	resource.ParallelTest(t, resource.TestCase{
+		Providers: testAccProviders,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+resource "netbox_tenant" "test" {
+  name = "%[1]s"
+  slug = "%[2]s"
+}
+resource "netbox_prefix" "test" {
+  prefix = "%[3]s"
+  status = "active"
+  is_pool = false
+}
+resource "netbox_available_ip_address" "test" {
+  prefix_id = netbox_prefix.test.id
+  tenant_id = netbox_tenant.test.id
+  status = "active"
+  dns_name = "tenant-test.mydomain.local"
+}`, testName, testSlug, testPrefix),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("netbox_available_ip_address.test", "ip_address", testIP),
+					resource.TestCheckResourceAttr("netbox_available_ip_address.test", "status", "active"),
+					resource.TestCheckResourceAttr("netbox_available_ip_address.test", "dns_name", "tenant-test.mydomain.local"),
+					resource.TestCheckResourceAttrPair("netbox_available_ip_address.test", "tenant_id", "netbox_tenant.test", "id"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccNetboxAvailableIPAddress_withTenantAndInterface(t *testing.T) {
+	startAddress := "1.9.2.1/24"
+	endAddress := "1.9.2.50/24"
+	testSlug := "av_ipa_ten_int"
+	testName := testAccGetTestName(testSlug)
+	resource.ParallelTest(t, resource.TestCase{
+		Providers: testAccProviders,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccNetboxIPAddressFullDeviceDependencies(testName) + fmt.Sprintf(`
+resource "netbox_tenant" "test" {
+  name = "%[1]s"
+  slug = "%[2]s"
+}
+resource "netbox_ip_range" "test_range" {
+  start_address = "%[3]s"
+  end_address = "%[4]s"
+}
+resource "netbox_available_ip_address" "test" {
+  ip_range_id = netbox_ip_range.test_range.id
+  tenant_id = netbox_tenant.test.id
+  status = "active"
+  dns_name = "tenant-interface-test.mydomain.local"
+  object_type = "dcim.interface"
+  interface_id = netbox_device_interface.test.id
+}`, testName, testSlug, startAddress, endAddress),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("netbox_available_ip_address.test", "status", "active"),
+					resource.TestCheckResourceAttr("netbox_available_ip_address.test", "object_type", "dcim.interface"),
+					resource.TestCheckResourceAttrPair("netbox_available_ip_address.test", "tenant_id", "netbox_tenant.test", "id"),
+					resource.TestCheckResourceAttrPair("netbox_available_ip_address.test", "interface_id", "netbox_device_interface.test", "id"),
+				),
+			},
+		},
+	})
+}
+
 func init() {
 	resource.AddTestSweepers("netbox_available_ip_address", &resource.Sweeper{
 		Name:         "netbox_available_ip_address",
