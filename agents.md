@@ -48,3 +48,4 @@ See `GNUmakefile` for testing targets:
 - `make docker-down` - Stop local Netbox instance
 - `make fmt` - Format Go code
 - `make docs` - Generate documentation
+
