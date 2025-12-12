@@ -207,9 +207,13 @@ func resourceNetboxAvailableIPAddressRead(d *schema.ResourceData, m interface{})
 	d.Set("description", ipAddress.Description)
 	d.Set("status", ipAddress.Status.Value)
 	api.readTags(d, ipAddress.Tags)
-	cf := getCustomFields(ipAddress.CustomFields)
-	if cf != nil {
-		d.Set(customFieldsKey, cf)
+
+	// Only set custom fields if they're defined in the config
+	if _, ok := d.GetOk(customFieldsKey); ok {
+		cf := getCustomFields(ipAddress.CustomFields)
+		if cf != nil {
+			d.Set(customFieldsKey, cf)
+		}
 	}
 	return nil
 }
