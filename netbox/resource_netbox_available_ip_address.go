@@ -98,6 +98,7 @@ This resource will retrieve the next available IP address from a given prefix or
 				ValidateFunc: validation.StringInSlice(resourceNetboxIPAddressRoleOptions, false),
 				Description:  buildValidValueDescription(resourceNetboxIPAddressRoleOptions),
 			},
+			customFieldsKey: customFieldsSchema,
 		},
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
@@ -108,16 +109,18 @@ This resource will retrieve the next available IP address from a given prefix or
 func resourceNetboxAvailableIPAddressCreate(d *schema.ResourceData, m interface{}) error {
 	api := m.(*providerState)
 	prefixID := int64(d.Get("prefix_id").(int))
-	vrfID := int64(int64(d.Get("vrf_id").(int)))
 	rangeID := int64(d.Get("ip_range_id").(int))
-	nestedvrf := models.NestedVRF{
-		ID: vrfID,
+	tenantID := int64(d.Get("tenant_id").(int))
+
+	data := models.WritableAvailableIP{}
+
+	// Tenant is now supported in the creation request (optional for backwards compatibility)
+	if tenantID != 0 {
+		data.Tenant = tenantID
 	}
-	data := models.AvailableIP{
-		Vrf: &nestedvrf,
-	}
+
 	if prefixID != 0 {
-		params := ipam.NewIpamPrefixesAvailableIpsCreateParams().WithID(prefixID).WithData([]*models.AvailableIP{&data})
+		params := ipam.NewIpamPrefixesAvailableIpsCreateParams().WithID(prefixID).WithData([]*models.WritableAvailableIP{&data})
 		res, err := api.Ipam.IpamPrefixesAvailableIpsCreate(params, nil)
 		if err != nil {
 			return err
@@ -130,7 +133,7 @@ func resourceNetboxAvailableIPAddressCreate(d *schema.ResourceData, m interface{
 		d.Set("ip_address", *res.Payload[0].Address)
 	}
 	if rangeID != 0 {
-		params := ipam.NewIpamIPRangesAvailableIpsCreateParams().WithID(rangeID).WithData([]*models.AvailableIP{&data})
+		params := ipam.NewIpamIPRangesAvailableIpsCreateParams().WithID(rangeID).WithData([]*models.WritableAvailableIP{&data})
 		res, err := api.Ipam.IpamIPRangesAvailableIpsCreate(params, nil)
 		if err != nil {
 			return err
@@ -204,6 +207,14 @@ func resourceNetboxAvailableIPAddressRead(d *schema.ResourceData, m interface{})
 	d.Set("description", ipAddress.Description)
 	d.Set("status", ipAddress.Status.Value)
 	api.readTags(d, ipAddress.Tags)
+
+	// Only set custom fields if they're defined in the config
+	if _, ok := d.GetOk(customFieldsKey); ok {
+		cf := getCustomFields(ipAddress.CustomFields)
+		if cf != nil {
+			d.Set(customFieldsKey, cf)
+		}
+	}
 	return nil
 }
 
@@ -253,6 +264,10 @@ func resourceNetboxAvailableIPAddressUpdate(d *schema.ResourceData, m interface{
 	data.Tags, err = getNestedTagListFromResourceDataSet(api, d.Get(tagsAllKey))
 	if err != nil {
 		return err
+	}
+
+	if cf, ok := d.GetOk(customFieldsKey); ok {
+		data.CustomFields = cf
 	}
 
 	params := ipam.NewIpamIPAddressesUpdateParams().WithID(id).WithData(&data)
