@@ -16,12 +16,13 @@ provider_installation {
 ### Build Process
 
 1. Build the provider binary in place:
+
 ```bash
 cd /Users/msollanych/git/terraform-plugin-work/terraform-provider-netbox
 go build -o terraform-provider-netbox
 ```
 
-2. That's it. Terraform will automatically use the local binary when running `terraform plan` or `terraform apply` in any project that uses the `e-breuninger/netbox` provider.
+1. That's it. Terraform will automatically use the local binary when running `terraform plan` or `terraform apply` in any project that uses the `e-breuninger/netbox` provider.
 
 ### Important Notes
 
@@ -33,6 +34,7 @@ go build -o terraform-provider-netbox
 ### Testing Changes
 
 After making code changes:
+
 ```bash
 go build -o terraform-provider-netbox
 cd /path/to/your/terraform/project
@@ -42,10 +44,10 @@ terraform plan  # Will use your local build
 ### Available Make Targets
 
 See `GNUmakefile` for testing targets:
+
 - `make test` - Run unit tests
 - `make testacc` - Run acceptance tests (requires Docker)
 - `make docker-up` - Start local Netbox instance for testing
 - `make docker-down` - Stop local Netbox instance
 - `make fmt` - Format Go code
 - `make docs` - Generate documentation
-

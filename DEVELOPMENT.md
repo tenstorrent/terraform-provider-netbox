@@ -7,11 +7,13 @@ This guide documents the changes made to this fork, local development workflow, 
 ### Issue #811: Custom Fields Support for available_ip_address
 
 **What was added:**
+
 - Added `custom_fields` attribute to the `netbox_available_ip_address` resource schema
 - Updated Create, Read, and Update functions to handle custom fields
 - Brings feature parity with the regular `netbox_ip_address` resource
 
 **Files modified:**
+
 - `netbox/resource_netbox_available_ip_address.go`
   - Line 101: Added `customFieldsKey: customFieldsSchema` to schema
   - Lines 213-216: Added custom fields reading in Read function
@@ -24,6 +26,7 @@ NetBox API requires tenant to be set when `object_type` is specified. The `model
 
 **Current Behavior:**
 The provider already handles tenant correctly through the following flow:
+
 1. Create call allocates the IP from the prefix/range with VRF
 2. Update call (automatically invoked after Create) sets tenant, object_type, and all other attributes
 3. This works for most cases
@@ -33,6 +36,7 @@ If you need to set both `tenant_id` AND `object_type` in the initial creation, N
 
 **Workaround:**
 If you encounter this issue:
+
 1. Create the available IP without `object_type` first
 2. Then update the resource to add `object_type` in a second apply
 
@@ -99,26 +103,31 @@ Run `terraform plan` or `terraform apply` as normal. Terraform will use your loc
 ### Running Tests
 
 **Unit tests:**
+
 ```bash
 make test
 ```
 
 **Acceptance tests** (requires Docker):
+
 ```bash
 make testacc
 ```
 
 This will:
+
 1. Start a NetBox instance in Docker on port 8001
 2. Run the full acceptance test suite
 3. Test against the NetBox version specified in the Makefile (currently v4.4.0)
 
 **Run a specific test:**
+
 ```bash
 TEST_FUNC=TestAccNetboxAvailableIPAddress_basic make testacc-specific-test
 ```
 
 **Clean up Docker volumes:**
+
 ```bash
 cd docker
 docker-compose down --volumes
@@ -138,6 +147,7 @@ docker-compose down --volumes
 ### Overview
 
 This repository uses GoReleaser and GitHub Actions to automate releases. The setup is already configured in:
+
 - `.goreleaser.yml` - Build and release configuration
 - `.github/workflows/release.yml` - GitHub Actions workflow
 
@@ -168,6 +178,7 @@ gpg --armor --export YOUR_KEY_ID > public-key.asc
 ```
 
 Add secrets to your GitHub repository:
+
 - Go to Settings → Secrets and variables → Actions
 - Add `GPG_PRIVATE_KEY`: Paste your private key (including BEGIN/END lines)
 - Add `PASSPHRASE`: Your GPG key passphrase
@@ -183,6 +194,7 @@ git push origin v1.0.0
 ```
 
 The GitHub Actions workflow will automatically:
+
 1. Build binaries for all platforms (Linux, macOS, Windows × amd64, arm64)
 2. Create checksums
 3. Sign the checksums with your GPG key
@@ -193,13 +205,14 @@ The GitHub Actions workflow will automatically:
 To make your provider available via Terraform Registry:
 
 **Prerequisites:**
+
 - GitHub repository must be public
 - Repository name must match pattern: `terraform-provider-{NAME}`
 - Must have at least one release with proper artifacts
 
 **Steps:**
 
-1. **Sign in to Terraform Registry** at https://registry.terraform.io
+1. **Sign in to Terraform Registry** at <https://registry.terraform.io>
    - Use your GitHub account
 
 2. **Publish Provider:**
@@ -239,6 +252,7 @@ terraform {
 ### Version Management
 
 Follow semantic versioning:
+
 - **Major** (v2.0.0): Breaking changes
 - **Minor** (v1.1.0): New features, backwards compatible
 - **Patch** (v1.0.1): Bug fixes
@@ -264,6 +278,7 @@ Follow semantic versioning:
 ### Build Configuration
 
 The `.goreleaser.yml` file configures:
+
 - Target platforms: darwin, linux, windows
 - Architectures: amd64, 386, arm64
 - Binary naming: `terraform-provider-netbox_v{VERSION}`
@@ -290,26 +305,34 @@ go mod tidy
 ## Troubleshooting
 
 ### "Too many open files" error on Linux
+
 Increase file descriptor limit:
+
 ```bash
 ulimit -n 2048
 ```
 
 ### Stale Docker volumes causing test failures
+
 Clean up Docker:
+
 ```bash
 cd docker
 docker-compose down --volumes
 ```
 
 ### Go version mismatch
+
 This project requires Go 1.24.0+. Update with:
+
 ```bash
 brew upgrade go  # macOS
 ```
 
 ### Provider not found during local testing
+
 Verify your `~/.terraformrc` has the correct path and run:
+
 ```bash
 terraform init
 ```
@@ -325,9 +348,9 @@ terraform init
 ## Summary of Changes
 
 This fork adds:
+
 1. ✅ Custom fields support for `available_ip_address` resource
 2. 📝 Documented tenant limitation for `available_ip_address` (upstream issue)
 3. 📚 Comprehensive development and publishing documentation
 
 The provider is now ready for local testing and can be published to your own namespace on the Terraform Registry.
-

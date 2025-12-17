@@ -27,6 +27,7 @@ The provider handles this through a two-step process:
 2. **Update**: Immediately called after Create, sets all other attributes including tenant
 
 See `netbox/resource_netbox_available_ip_address.go`:
+
 - Lines 109-157: Create function
 - Line 157: `return resourceNetboxAvailableIPAddressUpdate(d, m)` - Auto-update after create
 - Lines 220-278: Update function sets tenant on line 233
@@ -90,7 +91,7 @@ resource "netbox_available_ip_address" "example" {
   prefix_id              = data.netbox_prefix.test.id
   tenant_id              = netbox_tenant.example.id
   virtual_machine_interface_id = netbox_interface.vm.id
-  
+
   lifecycle {
     ignore_changes = [virtual_machine_interface_id]
   }
@@ -124,7 +125,6 @@ TEST_FUNC=TestAccNetboxAvailableIPAddress make testacc-specific-test
 
 ## References
 
-- Issue: https://github.com/e-breuninger/terraform-provider-netbox/issues/812
-- NetBox API: https://netboxlabs.com/docs/netbox/
-- go-netbox: https://github.com/fbreckle/go-netbox
-
+- Issue: <https://github.com/e-breuninger/terraform-provider-netbox/issues/812>
+- NetBox API: <https://netboxlabs.com/docs/netbox/>
+- go-netbox: <https://github.com/fbreckle/go-netbox>
