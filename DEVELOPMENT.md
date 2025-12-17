@@ -213,18 +213,22 @@ To make your provider available via Terraform Registry:
 **Steps:**
 
 1. **Sign in to Terraform Registry** at <https://registry.terraform.io>
+
    - Use your GitHub account
 
 2. **Publish Provider:**
+
    - Click "Publish" → "Provider"
    - Select your repository
    - Agree to terms
 
 3. **Namespace Verification:**
+
    - Registry will ask you to verify ownership
    - Add verification file to your repo or DNS TXT record
 
 4. **Upload GPG Public Key:**
+
    - Go to your user settings
    - Add your GPG public key (public-key.asc from earlier)
    - Registry uses this to verify release signatures
@@ -262,11 +266,13 @@ Follow semantic versioning:
 #### Workflows Configured
 
 1. **release.yml** - Triggered on `v*` tags
+
    - Builds multi-platform binaries
    - Signs with GPG
    - Creates GitHub release
 
 2. **ci-testing.yml** - Triggered on push/PR to master
+
    - Runs unit tests
    - Runs acceptance tests against multiple NetBox versions
    - Matrix testing across NetBox v4.3.0 - v4.4.0
