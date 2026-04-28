@@ -86,6 +86,18 @@ When adding a new delta, copy this template:
 - **Related go-netbox change:** None
 - **Status:** Active
 
+#### `device-type-nested-templates` — nested template lifecycle on `netbox_device_type`
+
+- **Type:** Feature
+- **Introduced:** 2026-04 (`v5.3.1-tenstorrent.0`)
+- **Files:** `netbox/resource_netbox_device_type.go`, `netbox/device_type_templates.go`
+- **Tests:** `TestAccNetboxDeviceType_templates_basic`, `TestAccNetboxDeviceType_templates_update`, `TestAccNetboxDeviceType_templates_destroy`, `TestAccNetboxDeviceType_templates_fk_ordering`, `TestAccNetboxDeviceType_templates_coexistence`
+- **Why:** Upstream `netbox_device_type` is a plain wrapper around the device-type API, with no support for managing the component templates (interface, power_port, etc.) that get instantiated on every device of that type. Users had to manage every template via a separate top-level resource and string the `device_type_id` through manually, which made copy-pasting device-type definitions painful.
+- **What:** Adds `power_port_templates`, `interface_templates`, `power_outlet_templates`, `front_port_templates`, `rear_port_templates`, `console_port_templates`, `console_server_port_templates`, `device_bay_templates`, `module_bay_templates`, and `inventory_item_templates` as nested `TypeSet` blocks on `netbox_device_type`. A single `syncDeviceTypeTemplates` helper reconciles state per type via list / create / partial-update / delete in dependency order (independents → power_outlet/front_port → inventory_item tree). The standalone `netbox_interface_template` / `netbox_device_bay_template` resources still work; the rule is that any one NetBox template object is managed by exactly one of (a) a nested block on its parent device_type or (b) a standalone resource.
+- **Upstream candidate:** Conditional — design is upstream-friendly but it's a chunky feature. Would need its own discussion with upstream maintainers. Currently parked per user direction.
+- **Related go-netbox change:** None — uses existing `Dcim*Templates*` client ops.
+- **Status:** Active
+
 If the customer asks about more features, they land here too. New patches should land as discrete commits with descriptive messages so the next rebase is bearable, and they should add a block above with `Status: Active`.
 
 ## Repo layout reminders
