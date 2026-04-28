@@ -16,15 +16,65 @@ When you change anything that touches the API client (any code under `netbox/cli
 
 ## The patches we carry
 
-As of the last rebase, these are the substantive deltas vs. upstream:
+Each carried delta is recorded as a per-delta block below. Blocks are not deleted when resolved — set `Status` to `Superseded by upstream <sha> on YYYY-MM` or `Removed on YYYY-MM` so the history stays intact for the next agent.
 
-| Area | Why | Upstreamable? |
-|---|---|---|
-| `netbox_available_ip_address` — `tenant_id` field | Upstream resource never supported assigning a tenant when allocating from a prefix. | **Yes** — clean candidate. Requires the `Tenant` field added in our go-netbox fork to also be upstreamed, or for upstream go-netbox to add it. |
-| `netbox_service` — NetBox 4.3+ `parent_object_type`/`parent_object_id` | NetBox 4.3 changed the service parent schema. Upstream provider doesn't yet handle it. | **Yes** — also a clean candidate. Requires go-netbox model changes to be in upstream go-netbox first. |
-| `.github/workflows/release.yml` permissions tweak | Tenstorrent-fork-specific GH Actions permissions. | **No** — internal only. |
+### Block template
 
-If the customer asks about more features, those will land here too. New patches should land as discrete commits with descriptive messages so the next rebase is bearable.
+When adding a new delta, copy this template:
+
+```markdown
+### `<short-id>` — <one-line description>
+
+- **Type:** Bug fix | Feature | Workflow tweak | Compatibility shim
+- **Introduced:** YYYY-MM (release tag if known)
+- **Files:** `path/a.go`, `path/b.go`
+- **Tests:** `TestAccX_y`, `TestAccX_z`
+- **Why:** Plain-English problem statement.
+- **What:** Plain-English summary of the change.
+- **Upstream candidate:** Yes / No / Conditional (with prerequisite). Currently parked per user direction.
+- **Related go-netbox change:** None | tag/SHA in msollanych-tt/go-netbox
+- **Status:** Active | Superseded by upstream <sha> on YYYY-MM | Removed on YYYY-MM
+```
+
+### Carried deltas
+
+#### `release-workflow-permissions` — Release workflow permissions tweak
+
+- **Type:** Workflow tweak
+- **Introduced:** 2026-04 (`v5.3.0-tenstorrent.0`)
+- **Files:** `.github/workflows/release.yml`
+- **Tests:** N/A (workflow-only)
+- **Why:** Tenstorrent's GitHub org requires explicit `permissions:` blocks on workflow jobs that publish releases. Upstream's release workflow ran fine on `e-breuninger/...` but failed on `tenstorrent/...` until permissions were spelled out.
+- **What:** Adds explicit `permissions:` blocks for the release jobs so goreleaser can write release artifacts and tags.
+- **Upstream candidate:** No — internal only.
+- **Related go-netbox change:** None
+- **Status:** Active
+
+#### `available-ip-tenant` — `tenant_id` on `netbox_available_ip_address`
+
+- **Type:** Feature
+- **Introduced:** 2026-04 (`v5.3.0-tenstorrent.0`)
+- **Files:** `netbox/resource_netbox_available_ip_address.go`, `netbox/resource_netbox_available_ip_address_test.go`
+- **Tests:** `TestAccNetboxAvailableIPAddress_withTenant`
+- **Why:** Upstream `netbox_available_ip_address` never supported assigning a tenant at allocation time. We need it for our IPAM workflow where every leased address is owned by a tenant.
+- **What:** Adds an optional `tenant_id` schema field, plumbs it through `Create`/`Read`/`Update` against the `WritableAvailableIP.Tenant` field. The `Tenant` field on `WritableAvailableIP` only exists in `msollanych-tt/go-netbox` (see related change), not in upstream `fbreckle/go-netbox`.
+- **Upstream candidate:** Yes — clean candidate, but blocked on upstream go-netbox accepting the `Tenant` field on `WritableAvailableIP` first. Currently parked per user direction.
+- **Related go-netbox change:** Commit "Add tenant field to WritableAvailableIP for available IP creation" on `msollanych-tt/go-netbox` master (tagged `v0.3.0-tenant-fix`).
+- **Status:** Active
+
+#### `service-43-parent` — NetBox 4.3+ parent object on `netbox_service`
+
+- **Type:** Compatibility shim
+- **Introduced:** 2026-04 (`v5.3.0-tenstorrent.0`)
+- **Files:** `netbox/resource_netbox_service.go`, `netbox/resource_netbox_service_test.go`
+- **Tests:** existing `netbox_service` accept tests
+- **Why:** NetBox 4.3 replaced the `device`/`virtual_machine` fields on Service with a polymorphic `parent_object_type`/`parent_object_id` pair. Upstream provider had not yet caught up so `netbox_service` was broken on NetBox 4.3+.
+- **What:** Maps the provider's existing `device_id` / `virtual_machine_id` schema fields onto the new parent object fields when talking to NetBox 4.3+. The model changes live in our go-netbox fork (the writable Service model now has the parent fields exposed).
+- **Upstream candidate:** Yes — also a clean candidate, blocked on upstream go-netbox model alignment. Currently parked per user direction.
+- **Related go-netbox change:** Service model updates carried on `msollanych-tt/go-netbox` master.
+- **Status:** Active
+
+If the customer asks about more features, they land here too. New patches should land as discrete commits with descriptive messages so the next rebase is bearable, and they should add a block above with `Status: Active`.
 
 ## Repo layout reminders
 
