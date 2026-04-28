@@ -180,6 +180,71 @@ resource "netbox_ip_range" "test_cf" {
 	})
 }
 
+// TestAccNetboxIpRange_cf_clear exercises the custom_fields null-clearing
+// fix: it sets a custom field on an IP range, then removes the entire
+// custom_fields block from config and asserts both Terraform state and
+// NetBox itself drop the value, with no further drift on a subsequent plan.
+func TestAccNetboxIpRange_cf_clear(t *testing.T) {
+	testSlug := "range_cf_clear"
+	testStartAddress := "10.0.2.1/24"
+	testEndAddress := "10.0.2.50/24"
+
+	withCF := fmt.Sprintf(`
+resource "netbox_custom_field" "test" {
+  name   = "%s"
+  type   = "text"
+  weight = 100
+  content_types = ["ipam.iprange"]
+}
+
+resource "netbox_ip_range" "test_cf_clear" {
+  start_address = "%s"
+  end_address = "%s"
+  status = "active"
+  custom_fields = {
+    "${netbox_custom_field.test.name}" = "set-then-cleared"
+  }
+}`, testSlug, testStartAddress, testEndAddress)
+
+	withoutCF := fmt.Sprintf(`
+resource "netbox_custom_field" "test" {
+  name   = "%s"
+  type   = "text"
+  weight = 100
+  content_types = ["ipam.iprange"]
+}
+
+resource "netbox_ip_range" "test_cf_clear" {
+  start_address = "%s"
+  end_address = "%s"
+  status = "active"
+}`, testSlug, testStartAddress, testEndAddress)
+
+	resource.ParallelTest(t, resource.TestCase{
+		Providers: testAccProviders,
+		PreCheck:  func() { testAccPreCheck(t) },
+		Steps: []resource.TestStep{
+			{
+				Config: withCF,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("netbox_ip_range.test_cf_clear", fmt.Sprintf("custom_fields.%s", testSlug), "set-then-cleared"),
+				),
+			},
+			{
+				Config: withoutCF,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckNoResourceAttr("netbox_ip_range.test_cf_clear", fmt.Sprintf("custom_fields.%s", testSlug)),
+				),
+			},
+			{
+				Config:             withoutCF,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
 func init() {
 	resource.AddTestSweepers("netbox_ip_range", &resource.Sweeper{
 		Name:         "netbox_ip_range",

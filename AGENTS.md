@@ -74,6 +74,18 @@ When adding a new delta, copy this template:
 - **Related go-netbox change:** Service model updates carried on `msollanych-tt/go-netbox` master.
 - **Status:** Active
 
+#### `cf-null-clearing` — `custom_fields` clearing on IP-address-family resources
+
+- **Type:** Bug fix
+- **Introduced:** 2026-04 (`v5.3.1-tenstorrent.0`)
+- **Files:** `netbox/custom_fields.go`, `netbox/resource_netbox_available_ip_address.go`, `netbox/resource_netbox_ip_address.go`, `netbox/resource_netbox_ip_range.go`
+- **Tests:** `TestAccNetboxAvailableIPAddress_cf_clear`, `TestAccNetboxIPAddress_cf_clear`, `TestAccNetboxIpRange_cf_clear`
+- **Why:** The `Update` path in all three IP-address-family resources used `if cf, ok := d.GetOk(customFieldsKey); ok { data.CustomFields = cf }`, which silently skipped the assignment whenever the user removed the field from their HCL. Combined with `json:"custom_fields,omitempty"` on the writable models, even when we did assign, an empty map was dropped before serialization, so NetBox never saw a clear and kept stale values. `Read` also gated `d.Set(customFieldsKey, ...)` on a non-empty map, so out-of-band clears never made it back into Terraform state.
+- **What:** Adds a `customFieldsForUpdate(d)` helper in `netbox/custom_fields.go` that diffs `d.GetChange(customFieldsKey)` and emits a map containing every key present in new config (with its new value) plus every key dropped from old state (with an explicit `nil` so it marshals as JSON `null`). This is what NetBox's PATCH semantics require to actually clear a CF; sending `{}` is a no-op because `omitempty` strips it. All three resources call this helper in `Update`, the duplicate `if cf, ok := d.GetOk(...)` block in `resource_netbox_available_ip_address.go` is removed, and `Read` now unconditionally calls `d.Set(customFieldsKey, getCustomFields(...))` so state stays in sync with NetBox.
+- **Upstream candidate:** Yes — clean candidate. Same gated-assignment pattern exists in upstream and almost certainly has the same bug. Currently parked per user direction.
+- **Related go-netbox change:** None
+- **Status:** Active
+
 If the customer asks about more features, they land here too. New patches should land as discrete commits with descriptive messages so the next rebase is bearable, and they should add a block above with `Status: Active`.
 
 ## Repo layout reminders
