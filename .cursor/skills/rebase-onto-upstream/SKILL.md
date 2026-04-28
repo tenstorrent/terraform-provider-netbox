@@ -154,7 +154,7 @@ Before promoting to a real tag, the user should test the prerelease binary again
 
 If the prerelease has a regression, fix it on the rebase branch and push another rc:
 
-```
+```bash
 git tag -a vA.B.C-tenstorrent-rc2 -m "..."
 git push origin vA.B.C-tenstorrent-rc2
 ```
@@ -165,7 +165,7 @@ Never reuse a published tag.
 
 Once the prerelease is validated:
 
-```
+```bash
 git checkout master
 git merge --ff-only rebase-onto-upstream-<MMMYYYY>
 git push origin master
@@ -178,13 +178,14 @@ Tag scheme: `v<upstream_version>-tenstorrent.<n>`. Bump `<n>` if we add more ten
 ### Phase 4 — Update AGENTS.md
 
 Edit the "Quick reference: state at last rebase" section in `AGENTS.md` to reflect the new state:
+
 - Upstream sha rebased onto
 - Latest go-netbox tag
 - Latest provider release tag
 
 Commit this on `master`:
 
-```
+```bash
 git add AGENTS.md
 git commit -m "docs: update AGENTS.md state at rebase to <new-tag>"
 git push origin master
@@ -202,7 +203,7 @@ git push origin master
 
 After a successful rebase, old `rebase-onto-upstream-<old-month>` branches can be deleted:
 
-```
+```bash
 git push origin --delete rebase-onto-upstream-<old-month>
 git branch -d rebase-onto-upstream-<old-month>
 ```

@@ -8,7 +8,7 @@
 
 It also depends on a **second** fork: `msollanych-tt/go-netbox` is a fork of `fbreckle/go-netbox`, used because we need at least one model field (`Tenant` on `WritableAvailableIP`) that upstream go-netbox does not expose. The dependency is wired in via a `replace` directive in `go.mod`:
 
-```
+```text
 replace github.com/fbreckle/go-netbox => github.com/msollanych-tt/go-netbox vX.Y.Z
 ```
 
@@ -180,14 +180,14 @@ Either leave the override on (cheap, but the warning every command may annoy a r
 
 ### Useful Make targets
 
-| Target | What it does |
-|---|---|
-| `make test` | Unit tests (no NetBox needed). |
-| `make testacc` | Brings up a NetBox in Docker (`make docker-up`), then runs the full acceptance suite. Slow. |
-| `make testacc-specific-test TEST_FUNC=TestAccNetboxAvailableIPAddress_withTenant` | Run a single acceptance test against the dockerized NetBox. |
-| `make docker-up` / `make docker-down` | Start / tear down the NetBox container. |
-| `make docs` | Regenerate provider docs from schema. Run before committing if you've touched a schema. |
-| `make fmt` | `go fmt` over the package. |
+| Target                                                                            | What it does                                                                                |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `make test`                                                                       | Unit tests (no NetBox needed).                                                              |
+| `make testacc`                                                                    | Brings up a NetBox in Docker (`make docker-up`), then runs the full acceptance suite. Slow. |
+| `make testacc-specific-test TEST_FUNC=TestAccNetboxAvailableIPAddress_withTenant` | Run a single acceptance test against the dockerized NetBox.                                 |
+| `make docker-up` / `make docker-down`                                             | Start / tear down the NetBox container.                                                     |
+| `make docs`                                                                       | Regenerate provider docs from schema. Run before committing if you've touched a schema.     |
+| `make fmt`                                                                        | `go fmt` over the package.                                                                  |
 
 `NETBOX_VERSION` is pinned in `GNUmakefile` (currently `v4.4.10`); override per invocation if needed: `NETBOX_VERSION=v4.5.0 make testacc`.
 
@@ -205,7 +205,7 @@ When a feature requires changes to the OpenAPI-generated client (most "the field
 
 When rebasing onto upstream:
 
-```
+```bash
 cd ../go-netbox
 git fetch upstream
 git checkout master
@@ -225,7 +225,7 @@ Do this whenever upstream has tagged a new release, or every few months, whichev
 
 The order matters. If upstream provider ships a feature that depends on a recent go-netbox change (e.g. v2 API token support depended on the `WritableToken.Expires` `omitempty` removal), the provider rebase will fail or behave wrong without the underlying dep being current.
 
-```
+```bash
 cd ../go-netbox
 git fetch upstream
 git checkout master
@@ -242,7 +242,7 @@ Force-pushing `master` is fine — only this repo consumes it, and it's pinned b
 
 Create a fresh branch from upstream, cherry-pick our patches in order. Don't rebase `master` onto `upstream/master` directly — branches first, validate, then fast-forward `master`.
 
-```
+```bash
 cd ../terraform-provider-netbox
 git fetch upstream
 git checkout -b rebase-onto-upstream-<MMMYYYY> upstream/master
@@ -260,7 +260,7 @@ Cherry-picks sometimes leave whitespace or stray brace artifacts. **Always run `
 
 ### Step 3: bump go-netbox dep and verify
 
-```
+```bash
 # Edit go.mod replace line to new tag
 go mod tidy
 go vet ./...
@@ -274,7 +274,7 @@ If anything fails, fix it on this branch, not by going back and amending cherry-
 
 The release pipeline is the only place we have full cross-platform build coverage. Tags are immutable once published — we cannot reuse a real version tag if the build fails. So:
 
-```
+```bash
 git push -u origin rebase-onto-upstream-<MMMYYYY>
 git tag -a vX.Y.Z-tenstorrent-rc1 -m "Prerelease, rebased on upstream <sha>"
 git push origin vX.Y.Z-tenstorrent-rc1
@@ -286,7 +286,7 @@ Watch the `release` workflow. It takes ~6 minutes. On success, the GitHub releas
 
 Once the prerelease has been validated:
 
-```
+```bash
 git checkout master
 git merge --ff-only rebase-onto-upstream-<MMMYYYY>
 git push origin master

@@ -97,6 +97,8 @@ resource "netbox_manufacturer" "test" {
 resource "netbox_device_type" "test" {
   model           = "%[1]s"
   manufacturer_id = netbox_manufacturer.test.id
+  # subdevice_role=parent is required by NetBox to allow device_bay templates.
+  subdevice_role  = "parent"
 
   power_port_templates {
     name          = "psu0"
