@@ -314,13 +314,14 @@ If/when upstreaming resumes: branch any upstream PR off `upstream/master` direct
 
 ## Quick reference: state at last rebase
 
-Last rebase: **Apr 2026**.
+Last rebase: **Apr 2026** (carried forward into `v5.3.1-tenstorrent.0`, no new upstream rebase).
 
-- Provider rebased onto upstream master at `8257f4d` ("test: add acceptance test for dns_name case drift"), which is upstream's tip 4 commits past tag `v5.3.0`.
+- Provider's `master` is upstream master at `8257f4d` ("test: add acceptance test for dns_name case drift") — upstream's tip 4 commits past tag `v5.3.0` — plus the carried tenstorrent patches.
 - go-netbox `master` carries one commit (`Add tenant field to WritableAvailableIP for available IP creation`) on top of upstream `53bc6c52`. Tagged `v0.3.0-tenant-fix`. The provider's `go.mod` `replace` line points to that tag. The previously-separate `tenant-fix` branch was retired; `master` is now the canonical branch.
-- Provider tagged as `v5.3.0-tenstorrent.0` after a successful `v5.3.0-tenstorrent-rc1` prerelease build.
-- Conflicts encountered during the rebase: `go.sum` (every cherry-pick — resolved with `--ours` then `go mod tidy`), and one cherry-pick artifact in `netbox/resource_netbox_available_ip_address_test.go` (stray closing braces, caught by `go vet`).
+- Tagged releases on the provider: `v5.3.0-tenstorrent.0` (rebase release), `v5.3.1-tenstorrent.0` (this release — no upstream rebase, only tenstorrent-side feature/bug additions on top of the same upstream anchor).
+- Carried deltas active at `v5.3.1-tenstorrent.0`: `release-workflow-permissions`, `available-ip-tenant`, `service-43-parent`, `cf-null-clearing` (new), `device-type-nested-templates` (new), `device-type-templates-examples` (new). See "The patches we carry" above for details.
+- Conflicts encountered during the original Apr 2026 rebase: `go.sum` (every cherry-pick — resolved with `--ours` then `go mod tidy`), and one cherry-pick artifact in `netbox/resource_netbox_available_ip_address_test.go` (stray closing braces, caught by `go vet`).
 
-Tag scheme going forward: `v<upstream_anchor>-tenstorrent.<n>`. Note: previous releases used a bare `v5.3.1` / `v5.3.2` scheme that collided with upstream's tag namespace; we no longer do that.
+Tag scheme going forward: `v<upstream_anchor>-tenstorrent.<n>`. The `<n>` bumps when we add tenstorrent commits on top of the same upstream anchor. Note that `v5.3.1-tenstorrent.0` is anchored to the same upstream commit as `v5.3.0-tenstorrent.0` (no fresh upstream rebase happened) — the `5.3.1` portion was chosen to track the next upstream version we expect to rebase onto. If we cut another tenstorrent-only release before that rebase happens, it should be `v5.3.1-tenstorrent.1`. Previous releases used a bare `v5.3.1` / `v5.3.2` scheme that collided with upstream's tag namespace; we no longer do that.
 
 When you start a new rebase, update this section with the new state at the end. Don't make the next agent grovel through commit logs to figure out where things are.
