@@ -20,10 +20,93 @@ resource "netbox_manufacturer" "test" {
   name = "test"
 }
 
-resource "netbox_device_type" "test" {
-  model           = "test"
+# Minimal: just the device_type, no nested templates.
+resource "netbox_device_type" "minimal" {
+  model           = "minimal"
   part_number     = "123"
   manufacturer_id = netbox_manufacturer.test.id
+}
+
+# Comprehensive: a single device_type that exercises every nested template
+# family. Power outlets reference power ports by name; front ports reference
+# rear ports by name; inventory items can form a parent tree and optionally
+# point at any other component template via component_type/component_id.
+resource "netbox_device_type" "full" {
+  model           = "full"
+  part_number     = "456"
+  manufacturer_id = netbox_manufacturer.test.id
+  u_height        = 2
+  is_full_depth   = true
+
+  power_port_templates {
+    name           = "psu0"
+    type           = "iec-60320-c14"
+    maximum_draw   = 750
+    allocated_draw = 500
+  }
+  power_port_templates {
+    name           = "psu1"
+    type           = "iec-60320-c14"
+    maximum_draw   = 750
+    allocated_draw = 500
+  }
+
+  power_outlet_templates {
+    name       = "out0"
+    type       = "iec-60320-c13"
+    power_port = "psu0"
+    feed_leg   = "A"
+  }
+
+  interface_templates {
+    name      = "mgmt0"
+    type      = "1000base-t"
+    mgmt_only = true
+  }
+  interface_templates {
+    name = "eth0"
+    type = "10gbase-x-sfpp"
+  }
+
+  console_port_templates {
+    name = "console0"
+    type = "rj-45"
+  }
+
+  console_server_port_templates {
+    name = "csp0"
+    type = "rj-45"
+  }
+
+  rear_port_templates {
+    name      = "rp0"
+    type      = "8p8c"
+    positions = 4
+  }
+
+  front_port_templates {
+    name               = "fp0"
+    type               = "8p8c"
+    rear_port          = "rp0"
+    rear_port_position = 1
+  }
+
+  device_bay_templates {
+    name = "bay0"
+  }
+
+  module_bay_templates {
+    name     = "modbay0"
+    position = "1"
+  }
+
+  inventory_item_templates {
+    name = "chassis"
+  }
+  inventory_item_templates {
+    name   = "psu-fan-a"
+    parent = "chassis"
+  }
 }
 ```
 
@@ -32,21 +115,226 @@ resource "netbox_device_type" "test" {
 
 ### Required
 
-- `manufacturer_id` (Number)
-- `model` (String)
+- `manufacturer_id` (Number) ID of the `netbox_manufacturer` this device type belongs to.
+- `model` (String) Marketing name of the model.
 
 ### Optional
 
-- `is_full_depth` (Boolean)
-- `part_number` (String)
-- `slug` (String)
-- `subdevice_role` (String)
+- `console_port_templates` (Block Set) Console port templates instantiated on every device of this type. See [the NetBox docs](https://docs.netbox.dev/en/stable/models/dcim/consoleporttemplate/). (see [below for nested schema](#nestedblock--console_port_templates))
+- `console_server_port_templates` (Block Set) Console server port templates instantiated on every device of this type. See [the NetBox docs](https://docs.netbox.dev/en/stable/models/dcim/consoleserverporttemplate/). (see [below for nested schema](#nestedblock--console_server_port_templates))
+- `device_bay_templates` (Block Set) Device bay templates instantiated on every device of this type. See [the NetBox docs](https://docs.netbox.dev/en/stable/models/dcim/devicebaytemplate/). (see [below for nested schema](#nestedblock--device_bay_templates))
+- `front_port_templates` (Block Set) Front port templates instantiated on every device of this type. Each must reference a sibling `rear_port_templates` block by name. See [the NetBox docs](https://docs.netbox.dev/en/stable/models/dcim/frontporttemplate/). (see [below for nested schema](#nestedblock--front_port_templates))
+- `interface_templates` (Block Set) Network interface templates instantiated on every device of this type. See [the NetBox docs](https://docs.netbox.dev/en/stable/models/dcim/interfacetemplate/). (see [below for nested schema](#nestedblock--interface_templates))
+- `inventory_item_templates` (Block Set) Inventory item templates instantiated on every device of this type. Supports a parent tree via the `parent` field and an optional polymorphic FK via `component_type`/`component_id`. See [the NetBox docs](https://docs.netbox.dev/en/stable/models/dcim/inventoryitemtemplate/). (see [below for nested schema](#nestedblock--inventory_item_templates))
+- `is_full_depth` (Boolean) Whether the device occupies the full rack depth.
+- `module_bay_templates` (Block Set) Module bay templates instantiated on every device of this type. See [the NetBox docs](https://docs.netbox.dev/en/stable/models/dcim/modulebaytemplate/). (see [below for nested schema](#nestedblock--module_bay_templates))
+- `part_number` (String) Manufacturer part number / SKU.
+- `power_outlet_templates` (Block Set) Power outlet templates instantiated on every device of this type. May reference a sibling `power_port_templates` block by name. See [the NetBox docs](https://docs.netbox.dev/en/stable/models/dcim/poweroutlettemplate/). (see [below for nested schema](#nestedblock--power_outlet_templates))
+- `power_port_templates` (Block Set) Power port templates instantiated on every device of this type. See [the NetBox docs](https://docs.netbox.dev/en/stable/models/dcim/powerporttemplate/). (see [below for nested schema](#nestedblock--power_port_templates))
+- `rear_port_templates` (Block Set) Rear port templates instantiated on every device of this type. Front ports reference these by name. See [the NetBox docs](https://docs.netbox.dev/en/stable/models/dcim/rearporttemplate/). (see [below for nested schema](#nestedblock--rear_port_templates))
+- `slug` (String) URL-safe identifier for the device type. Defaults to a slugified `model` if not given.
+- `subdevice_role` (String) For chassis-style devices: `parent` for the chassis, `child` for the modules. Leave unset for a single-piece device.
 - `tags` (Set of String)
-- `u_height` (Number) Defaults to `1.0`.
+- `u_height` (Number) Rack height in U. Defaults to `1.0`. Defaults to `1.0`.
 
 ### Read-Only
 
 - `id` (String) The ID of this resource.
 - `tags_all` (Set of String)
+
+<a id="nestedblock--console_port_templates"></a>
+### Nested Schema for `console_port_templates`
+
+Required:
+
+- `name` (String) Name of the template. Must be unique within the parent device_type and is used as the identity key for the nested set.
+
+Optional:
+
+- `description` (String) Free-form description shown in the NetBox UI.
+- `label` (String) Optional physical label, e.g. text printed on the chassis next to the port.
+- `type` (String) Console port connector type, e.g. `de-9`, `rj-45`, `usb-c`. See the NetBox docs for the full enumeration.
+
+Read-Only:
+
+- `id` (Number) NetBox-assigned ID of the template, populated after Create.
+
+
+<a id="nestedblock--console_server_port_templates"></a>
+### Nested Schema for `console_server_port_templates`
+
+Required:
+
+- `name` (String) Name of the template. Must be unique within the parent device_type and is used as the identity key for the nested set.
+
+Optional:
+
+- `description` (String) Free-form description shown in the NetBox UI.
+- `label` (String) Optional physical label, e.g. text printed on the chassis next to the port.
+- `type` (String) Console server port connector type. See the NetBox docs for the full enumeration.
+
+Read-Only:
+
+- `id` (Number) NetBox-assigned ID of the template, populated after Create.
+
+
+<a id="nestedblock--device_bay_templates"></a>
+### Nested Schema for `device_bay_templates`
+
+Required:
+
+- `name` (String) Name of the template. Must be unique within the parent device_type and is used as the identity key for the nested set.
+
+Optional:
+
+- `description` (String) Free-form description shown in the NetBox UI.
+- `label` (String) Optional physical label, e.g. text printed on the chassis next to the port.
+
+Read-Only:
+
+- `id` (Number) NetBox-assigned ID of the template, populated after Create.
+
+
+<a id="nestedblock--front_port_templates"></a>
+### Nested Schema for `front_port_templates`
+
+Required:
+
+- `name` (String) Name of the template. Must be unique within the parent device_type and is used as the identity key for the nested set.
+- `rear_port` (String) Name of the sibling `rear_port_templates` block this front port is mapped to. Resolved to the corresponding template ID at apply time.
+- `type` (String) Front port connector type, e.g. `8p8c`, `lc`, `mpo`. See the NetBox docs for the full enumeration.
+
+Optional:
+
+- `color` (String) Hex color code (without leading `#`) used for the port in the UI.
+- `description` (String) Free-form description shown in the NetBox UI.
+- `label` (String) Optional physical label, e.g. text printed on the chassis next to the port.
+- `rear_port_position` (Number) Which numbered position on the rear port this front port maps to. Defaults to `1`. Defaults to `1`.
+
+Read-Only:
+
+- `id` (Number) NetBox-assigned ID of the template, populated after Create.
+
+
+<a id="nestedblock--interface_templates"></a>
+### Nested Schema for `interface_templates`
+
+Required:
+
+- `name` (String) Name of the template. Must be unique within the parent device_type and is used as the identity key for the nested set.
+- `type` (String) Interface type, e.g. `1000base-t`, `25gbase-x-sfp28`. See the NetBox docs for the full enumeration.
+
+Optional:
+
+- `description` (String) Free-form description shown in the NetBox UI.
+- `label` (String) Optional physical label, e.g. text printed on the chassis next to the port.
+- `mgmt_only` (Boolean) If true, this interface is for out-of-band management only.
+- `poe_mode` (String) PoE mode (`pd`, `pse`).
+- `poe_type` (String) PoE type, e.g. `type1-ieee802.3af`.
+
+Read-Only:
+
+- `id` (Number) NetBox-assigned ID of the template, populated after Create.
+
+
+<a id="nestedblock--inventory_item_templates"></a>
+### Nested Schema for `inventory_item_templates`
+
+Required:
+
+- `name` (String) Name of the template. Must be unique within the parent device_type and is used as the identity key for the nested set.
+
+Optional:
+
+- `component_id` (Number) Polymorphic FK target ID. Use the `id` computed attribute of another nested template to wire this up.
+- `component_type` (String) Polymorphic FK type, e.g. `dcim.interfacetemplate`, `dcim.consoleporttemplate`. Pair with `component_id` to attach this inventory item to another component on the same device_type.
+- `description` (String) Free-form description shown in the NetBox UI.
+- `label` (String) Optional physical label, e.g. text printed on the chassis next to the port.
+- `manufacturer_id` (Number) Optional manufacturer ID for this inventory item.
+- `parent` (String) Name of the sibling `inventory_item_templates` block that should be the parent of this item. Forms a tree; the root has no parent.
+- `part_id` (String) Manufacturer part number / SKU for this inventory item.
+- `role_id` (Number) Optional inventory item role ID.
+
+Read-Only:
+
+- `id` (Number) NetBox-assigned ID of the template, populated after Create.
+
+
+<a id="nestedblock--module_bay_templates"></a>
+### Nested Schema for `module_bay_templates`
+
+Required:
+
+- `name` (String) Name of the template. Must be unique within the parent device_type and is used as the identity key for the nested set.
+
+Optional:
+
+- `description` (String) Free-form description shown in the NetBox UI.
+- `label` (String) Optional physical label, e.g. text printed on the chassis next to the port.
+- `position` (String) Position designator inside the chassis, used by NetBox when {module} substitution is performed on child component template names.
+
+Read-Only:
+
+- `id` (Number) NetBox-assigned ID of the template, populated after Create.
+
+
+<a id="nestedblock--power_outlet_templates"></a>
+### Nested Schema for `power_outlet_templates`
+
+Required:
+
+- `name` (String) Name of the template. Must be unique within the parent device_type and is used as the identity key for the nested set.
+
+Optional:
+
+- `description` (String) Free-form description shown in the NetBox UI.
+- `feed_leg` (String) Power feed leg this outlet is connected to. Valid values are `A`, `B`, `C`.
+- `label` (String) Optional physical label, e.g. text printed on the chassis next to the port.
+- `power_port` (String) Name of the sibling `power_port_templates` block this outlet is downstream of. Resolved to the corresponding template ID at apply time.
+- `type` (String) Power outlet connector type, e.g. `iec-60320-c13`. See the NetBox docs for the full enumeration.
+
+Read-Only:
+
+- `id` (Number) NetBox-assigned ID of the template, populated after Create.
+
+
+<a id="nestedblock--power_port_templates"></a>
+### Nested Schema for `power_port_templates`
+
+Required:
+
+- `name` (String) Name of the template. Must be unique within the parent device_type and is used as the identity key for the nested set.
+
+Optional:
+
+- `allocated_draw` (Number) Allocated power draw in watts.
+- `description` (String) Free-form description shown in the NetBox UI.
+- `label` (String) Optional physical label, e.g. text printed on the chassis next to the port.
+- `maximum_draw` (Number) Maximum power draw in watts.
+- `type` (String) Power port connector type, e.g. `iec-60320-c14`. See the NetBox docs for the full enumeration.
+
+Read-Only:
+
+- `id` (Number) NetBox-assigned ID of the template, populated after Create.
+
+
+<a id="nestedblock--rear_port_templates"></a>
+### Nested Schema for `rear_port_templates`
+
+Required:
+
+- `name` (String) Name of the template. Must be unique within the parent device_type and is used as the identity key for the nested set.
+- `type` (String) Rear port connector type, e.g. `8p8c`, `lc`, `mpo`. See the NetBox docs for the full enumeration.
+
+Optional:
+
+- `color` (String) Hex color code (without leading `#`) used for the port in the UI.
+- `description` (String) Free-form description shown in the NetBox UI.
+- `label` (String) Optional physical label, e.g. text printed on the chassis next to the port.
+- `positions` (Number) Number of front positions this rear port can be split into. Defaults to 1 if not set. Defaults to `1`.
+
+Read-Only:
+
+- `id` (Number) NetBox-assigned ID of the template, populated after Create.
 
 

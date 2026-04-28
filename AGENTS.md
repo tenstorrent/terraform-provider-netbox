@@ -98,6 +98,18 @@ When adding a new delta, copy this template:
 - **Related go-netbox change:** None — uses existing `Dcim*Templates*` client ops.
 - **Status:** Active
 
+#### `device-type-templates-examples` — examples and docs for nested templates
+
+- **Type:** Feature (docs)
+- **Introduced:** 2026-04 (`v5.3.1-tenstorrent.0`)
+- **Files:** `examples/resources/netbox_device_type/resource.tf`, regenerated files under `docs/resources/`
+- **Tests:** Covered by feature acceptance tests above; doc regeneration is a `make docs` artifact.
+- **Why:** With the nested-templates feature shipping, the example HCL had to grow beyond the previous 9-line minimal example so `make docs` would render meaningful guidance for the new fields.
+- **What:** Updates `examples/resources/netbox_device_type/resource.tf` to showcase the nested template blocks, and commits the regenerated `docs/resources/netbox_device_type.md`.
+- **Upstream candidate:** Yes — would go upstream alongside the feature itself.
+- **Related go-netbox change:** None
+- **Status:** Active
+
 If the customer asks about more features, they land here too. New patches should land as discrete commits with descriptive messages so the next rebase is bearable, and they should add a block above with `Status: Active`.
 
 ## Repo layout reminders
