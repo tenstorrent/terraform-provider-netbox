@@ -102,10 +102,20 @@ type templateOps struct {
 // to converge. The resolveSibling callback is wired through to each expand()
 // so FK-bearing types can look up sibling template IDs by name.
 //
-// Returns a name->id map of the templates that exist on NetBox after
-// reconciliation, so dependent passes (power_outlet, front_port) can resolve
-// their sibling FKs by name.
-func reconcileTemplates(api *providerState, deviceTypeID int64, ops templateOps, desired *schema.Set, resolveSibling func(name string) int64) (map[string]int64, error) {
+// Ownership rule: a template is considered "ours" iff its name appears in
+// either the new desired set OR the previousNames set (i.e. it was tracked
+// in our prior state). Templates in NetBox that are not in either set are
+// owned by something else (e.g. a standalone netbox_interface_template
+// resource, an external manual edit) and we leave them strictly alone — we
+// neither read them into our state nor delete them. This is what makes
+// coexistence with the standalone template resources actually safe: without
+// this gate, the reconciler would silently mass-delete any template attached
+// to the device_type that did not appear in the user's nested HCL blocks.
+//
+// Returns a name->id map of the templates we now own (created or already
+// existed and were updated), so dependent passes (power_outlet, front_port)
+// can resolve their sibling FKs by name.
+func reconcileTemplates(api *providerState, deviceTypeID int64, ops templateOps, desired *schema.Set, previousNames map[string]struct{}, resolveSibling func(name string) int64) (map[string]int64, error) {
 	current, err := ops.list(api, deviceTypeID)
 	if err != nil {
 		return nil, fmt.Errorf("listing %s templates for device_type %d: %w", ops.kind, deviceTypeID, err)
@@ -153,9 +163,14 @@ func reconcileTemplates(api *providerState, deviceTypeID int64, ops templateOps,
 		}
 	}
 
-	// Delete anything on NetBox that's no longer desired.
+	// Delete only templates we previously owned that are not in the new
+	// desired set. Anything in NetBox we never knew about (not in
+	// previousNames, not in desired) belongs to someone else — leave it.
 	for name, id := range currentByName {
 		if _, keep := desiredByName[name]; keep {
+			continue
+		}
+		if _, owned := previousNames[name]; !owned {
 			continue
 		}
 		if err := ops.del(api, id); err != nil {
@@ -166,33 +181,98 @@ func reconcileTemplates(api *providerState, deviceTypeID int64, ops templateOps,
 	return finalIDs, nil
 }
 
+// templateNamesFromSet pulls the `name` field out of every entry in a TF set
+// and returns them as a set-keyed map. nil-safe.
+func templateNamesFromSet(s *schema.Set) map[string]struct{} {
+	if s == nil {
+		return map[string]struct{}{}
+	}
+	out := make(map[string]struct{}, s.Len())
+	for _, raw := range s.List() {
+		m, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		name, _ := m["name"].(string)
+		if name != "" {
+			out[name] = struct{}{}
+		}
+	}
+	return out
+}
+
+// previousTemplateNames returns the set of template `name` values that were
+// in this resource's prior state for `key`, before the current apply. It is
+// our authoritative "we used to own these" record and drives both the
+// Sync-time deletion gate and the Read-time filter.
+func previousTemplateNames(d *schema.ResourceData, key string) map[string]struct{} {
+	old, _ := d.GetChange(key)
+	if oldSet, ok := old.(*schema.Set); ok {
+		return templateNamesFromSet(oldSet)
+	}
+	return map[string]struct{}{}
+}
+
+// filterReadTemplatesByOwnership trims `fetched` (the full per-type list we
+// just got from NetBox for this device_type) down to entries we actually
+// own, and writes them to state. Ownership is the union of what's in current
+// state for `key` and what's in `additional` (used for the post-Create read,
+// where Sync has just created templates that don't exist in state yet).
+//
+// If we own zero templates of this kind, we leave state alone entirely
+// (including not clearing it) — the caller probably never declared any
+// nested blocks for this family and we should not advertise any drift on
+// templates managed elsewhere.
+func filterReadTemplatesByOwnership(d *schema.ResourceData, key string, fetched []map[string]interface{}, additional map[string]struct{}) error {
+	owned := templateNamesFromSet(getTemplateSet(d, key))
+	for name := range additional {
+		owned[name] = struct{}{}
+	}
+	if len(owned) == 0 {
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, len(fetched))
+	for _, m := range fetched {
+		name, _ := m["name"].(string)
+		if name == "" {
+			continue
+		}
+		if _, ok := owned[name]; ok {
+			out = append(out, m)
+		}
+	}
+	return d.Set(key, out)
+}
+
 // syncDeviceTypeTemplates is the entry point called from
 // resource_netbox_device_type.go Create/Update. It runs all 10 template
 // reconcilers in dependency order against the live device_type and converges
-// NetBox to match the user's HCL.
+// NetBox to match the user's HCL. Per-type ownership is derived from prior
+// state via d.GetChange so we never delete templates we did not previously
+// manage (see reconcileTemplates' coexistence-safety doc).
 func syncDeviceTypeTemplates(d *schema.ResourceData, api *providerState, deviceTypeID int64) error {
 	// Pass 1: independent types. No sibling FKs to resolve.
-	ppIDs, err := reconcileTemplates(api, deviceTypeID, powerPortTemplateOps(), getTemplateSet(d, powerPortTemplatesKey), nil)
+	ppIDs, err := reconcileTemplates(api, deviceTypeID, powerPortTemplateOps(), getTemplateSet(d, powerPortTemplatesKey), previousTemplateNames(d, powerPortTemplatesKey), nil)
 	if err != nil {
 		return err
 	}
-	if _, err := reconcileTemplates(api, deviceTypeID, interfaceTemplateOps(), getTemplateSet(d, interfaceTemplatesKey), nil); err != nil {
+	if _, err := reconcileTemplates(api, deviceTypeID, interfaceTemplateOps(), getTemplateSet(d, interfaceTemplatesKey), previousTemplateNames(d, interfaceTemplatesKey), nil); err != nil {
 		return err
 	}
-	if _, err := reconcileTemplates(api, deviceTypeID, consolePortTemplateOps(), getTemplateSet(d, consolePortTemplatesKey), nil); err != nil {
+	if _, err := reconcileTemplates(api, deviceTypeID, consolePortTemplateOps(), getTemplateSet(d, consolePortTemplatesKey), previousTemplateNames(d, consolePortTemplatesKey), nil); err != nil {
 		return err
 	}
-	if _, err := reconcileTemplates(api, deviceTypeID, consoleServerPortTemplateOps(), getTemplateSet(d, consoleServerPortTemplatesKey), nil); err != nil {
+	if _, err := reconcileTemplates(api, deviceTypeID, consoleServerPortTemplateOps(), getTemplateSet(d, consoleServerPortTemplatesKey), previousTemplateNames(d, consoleServerPortTemplatesKey), nil); err != nil {
 		return err
 	}
-	rpIDs, err := reconcileTemplates(api, deviceTypeID, rearPortTemplateOps(), getTemplateSet(d, rearPortTemplatesKey), nil)
+	rpIDs, err := reconcileTemplates(api, deviceTypeID, rearPortTemplateOps(), getTemplateSet(d, rearPortTemplatesKey), previousTemplateNames(d, rearPortTemplatesKey), nil)
 	if err != nil {
 		return err
 	}
-	if _, err := reconcileTemplates(api, deviceTypeID, deviceBayTemplateOps(), getTemplateSet(d, deviceBayTemplatesKey), nil); err != nil {
+	if _, err := reconcileTemplates(api, deviceTypeID, deviceBayTemplateOps(), getTemplateSet(d, deviceBayTemplatesKey), previousTemplateNames(d, deviceBayTemplatesKey), nil); err != nil {
 		return err
 	}
-	if _, err := reconcileTemplates(api, deviceTypeID, moduleBayTemplateOps(), getTemplateSet(d, moduleBayTemplatesKey), nil); err != nil {
+	if _, err := reconcileTemplates(api, deviceTypeID, moduleBayTemplateOps(), getTemplateSet(d, moduleBayTemplatesKey), previousTemplateNames(d, moduleBayTemplatesKey), nil); err != nil {
 		return err
 	}
 
@@ -200,11 +280,11 @@ func syncDeviceTypeTemplates(d *schema.ResourceData, api *providerState, deviceT
 	// template by name; front_port references a sibling rear_port template
 	// by name. Resolution closes over the IDs we just created above.
 	ppLookup := func(name string) int64 { return ppIDs[name] }
-	if _, err := reconcileTemplates(api, deviceTypeID, powerOutletTemplateOps(), getTemplateSet(d, powerOutletTemplatesKey), ppLookup); err != nil {
+	if _, err := reconcileTemplates(api, deviceTypeID, powerOutletTemplateOps(), getTemplateSet(d, powerOutletTemplatesKey), previousTemplateNames(d, powerOutletTemplatesKey), ppLookup); err != nil {
 		return err
 	}
 	rpLookup := func(name string) int64 { return rpIDs[name] }
-	if _, err := reconcileTemplates(api, deviceTypeID, frontPortTemplateOps(), getTemplateSet(d, frontPortTemplatesKey), rpLookup); err != nil {
+	if _, err := reconcileTemplates(api, deviceTypeID, frontPortTemplateOps(), getTemplateSet(d, frontPortTemplatesKey), previousTemplateNames(d, frontPortTemplatesKey), rpLookup); err != nil {
 		return err
 	}
 
@@ -214,7 +294,7 @@ func syncDeviceTypeTemplates(d *schema.ResourceData, api *providerState, deviceT
 	// pair is taken as-is from the user (string + int) so callers can reference
 	// any component object — no resolution needed here. Parents are resolved
 	// after the fact by inventoryItemTemplateOps which walks the tree itself.
-	if err := syncInventoryItemTemplates(api, deviceTypeID, getTemplateSet(d, inventoryItemTemplatesKey)); err != nil {
+	if err := syncInventoryItemTemplates(api, deviceTypeID, getTemplateSet(d, inventoryItemTemplatesKey), previousTemplateNames(d, inventoryItemTemplatesKey)); err != nil {
 		return err
 	}
 
@@ -461,7 +541,7 @@ func readPowerPortTemplates(d *schema.ResourceData, api *providerState, deviceTy
 		}
 		out = append(out, m)
 	}
-	return d.Set(powerPortTemplatesKey, out)
+	return filterReadTemplatesByOwnership(d, powerPortTemplatesKey, out, nil)
 }
 
 // =============================================================================
@@ -578,7 +658,7 @@ func readInterfaceTemplates(d *schema.ResourceData, api *providerState, deviceTy
 		}
 		out = append(out, m)
 	}
-	return d.Set(interfaceTemplatesKey, out)
+	return filterReadTemplatesByOwnership(d, interfaceTemplatesKey, out, nil)
 }
 
 // =============================================================================
@@ -669,7 +749,7 @@ func readConsolePortTemplates(d *schema.ResourceData, api *providerState, device
 		}
 		out = append(out, m)
 	}
-	return d.Set(consolePortTemplatesKey, out)
+	return filterReadTemplatesByOwnership(d, consolePortTemplatesKey, out, nil)
 }
 
 // =============================================================================
@@ -760,7 +840,7 @@ func readConsoleServerPortTemplates(d *schema.ResourceData, api *providerState, 
 		}
 		out = append(out, m)
 	}
-	return d.Set(consoleServerPortTemplatesKey, out)
+	return filterReadTemplatesByOwnership(d, consoleServerPortTemplatesKey, out, nil)
 }
 
 // =============================================================================
@@ -869,7 +949,7 @@ func readRearPortTemplates(d *schema.ResourceData, api *providerState, deviceTyp
 		}
 		out = append(out, m)
 	}
-	return d.Set(rearPortTemplatesKey, out)
+	return filterReadTemplatesByOwnership(d, rearPortTemplatesKey, out, nil)
 }
 
 // =============================================================================
@@ -950,7 +1030,7 @@ func readDeviceBayTemplates(d *schema.ResourceData, api *providerState, deviceTy
 		}
 		out = append(out, m)
 	}
-	return d.Set(deviceBayTemplatesKey, out)
+	return filterReadTemplatesByOwnership(d, deviceBayTemplatesKey, out, nil)
 }
 
 // =============================================================================
@@ -1039,7 +1119,7 @@ func readModuleBayTemplates(d *schema.ResourceData, api *providerState, deviceTy
 		}
 		out = append(out, m)
 	}
-	return d.Set(moduleBayTemplatesKey, out)
+	return filterReadTemplatesByOwnership(d, moduleBayTemplatesKey, out, nil)
 }
 
 // =============================================================================
@@ -1157,7 +1237,7 @@ func readPowerOutletTemplates(d *schema.ResourceData, api *providerState, device
 		}
 		out = append(out, m)
 	}
-	return d.Set(powerOutletTemplatesKey, out)
+	return filterReadTemplatesByOwnership(d, powerOutletTemplatesKey, out, nil)
 }
 
 // =============================================================================
@@ -1286,7 +1366,7 @@ func readFrontPortTemplates(d *schema.ResourceData, api *providerState, deviceTy
 		}
 		out = append(out, m)
 	}
-	return d.Set(frontPortTemplatesKey, out)
+	return filterReadTemplatesByOwnership(d, frontPortTemplatesKey, out, nil)
 }
 
 // =============================================================================
@@ -1334,7 +1414,13 @@ func inventoryItemTemplateSchema() *schema.Resource {
 // is broken out from the generic reconciler because (a) it has to walk the
 // parent tree in dependency order, and (b) the parent FK resolves against the
 // IDs of templates we are currently in the middle of creating.
-func syncInventoryItemTemplates(api *providerState, deviceTypeID int64, desired *schema.Set) error {
+// syncInventoryItemTemplates is the inventory_item-specific reconciler — it
+// can't share reconcileTemplates because of parent/child tree ordering on
+// both apply and delete. The previousNames argument plays the same
+// "ownership gate" role as in reconcileTemplates: only inventory_item
+// templates whose names are in either previousNames or the new desired set
+// are touched. Anything else attached to the device_type is someone else's.
+func syncInventoryItemTemplates(api *providerState, deviceTypeID int64, desired *schema.Set, previousNames map[string]struct{}) error {
 	// Pull current state.
 	listParams := dcim.NewDcimInventoryItemTemplatesListParams().WithDevicetypeID(deviceTypeIDStr(deviceTypeID))
 	limit := templateListPageLimit
@@ -1435,12 +1521,17 @@ func syncInventoryItemTemplates(api *providerState, deviceTypeID int64, desired 
 		}
 	}
 
-	// Delete current items that are not in the desired set, child-first so we
-	// don't trip over parent FK constraints. We don't have full depth info on
-	// the items being deleted, so we re-read after each batch wouldn't help —
-	// instead we delete leaves repeatedly until nothing changes.
+	// Delete only items we previously owned that are no longer desired.
+	// Anything in NetBox that isn't in previousNames is owned elsewhere
+	// (standalone inventory_item resource, manual NetBox edit, etc.) and
+	// must be left alone — the same coexistence safety as reconcileTemplates.
 	for _, name := range ordered {
 		delete(currentByName, name)
+	}
+	for name := range currentByName {
+		if _, owned := previousNames[name]; !owned {
+			delete(currentByName, name)
+		}
 	}
 	if len(currentByName) > 0 {
 		// Re-pull with a cap to know depths/parents on the deletion candidates.
@@ -1581,7 +1672,7 @@ func readInventoryItemTemplates(d *schema.ResourceData, api *providerState, devi
 		}
 		out = append(out, m)
 	}
-	return d.Set(inventoryItemTemplatesKey, out)
+	return filterReadTemplatesByOwnership(d, inventoryItemTemplatesKey, out, nil)
 }
 
 // ptrToStr is a small helper that dereferences a *string, returning "" for nil.
