@@ -22,7 +22,7 @@ The fork also depends on a second fork: `msollanych-tt/go-netbox` of `fbreckle/g
 
 Track progress with this checklist:
 
-```
+```text
 - [ ] Phase 1: rebase go-netbox master onto upstream/master
 - [ ] Phase 1: push and tag new go-netbox version
 - [ ] Phase 2: create rebase branch off upstream/master
@@ -39,7 +39,7 @@ Track progress with this checklist:
 
 Order matters: upstream provider features sometimes depend on recent go-netbox changes (e.g. v2 token support depended on `WritableToken.Expires` `omitempty` removal).
 
-```
+```bash
 cd ../go-netbox
 git fetch upstream
 git checkout master
@@ -48,7 +48,7 @@ git rebase upstream/master
 
 Resolve conflicts on our patches. Our changes touch model files (e.g. `WritableAvailableIP`); upstream changes are usually generated client/model deltas elsewhere.
 
-```
+```bash
 git push --force-with-lease origin master
 git tag -a vX.Y.Z -m "Rebased onto upstream <sha>"
 git push origin vX.Y.Z
@@ -58,7 +58,7 @@ git push origin vX.Y.Z
 
 ### Phase 2 — Rebase the provider
 
-```
+```bash
 cd ../terraform-provider-netbox
 git fetch upstream
 git checkout -b rebase-onto-upstream-<MMMYYYY> upstream/master
@@ -66,13 +66,13 @@ git checkout -b rebase-onto-upstream-<MMMYYYY> upstream/master
 
 Cherry-pick our patches in their original order. Get the list with:
 
-```
+```bash
 git log --oneline master ^upstream/master
 ```
 
 Read it bottom-up (oldest first) and cherry-pick in that order:
 
-```
+```bash
 git cherry-pick <oldest-sha>
 git cherry-pick <next-sha>
 # ...
@@ -89,19 +89,19 @@ git cherry-pick <next-sha>
 
 After all cherry-picks land, edit `go.mod`:
 
-```
+```text
 replace github.com/fbreckle/go-netbox => github.com/msollanych-tt/go-netbox vX.Y.Z
 ```
 
 Use the new tag from Phase 1. Then:
 
-```
+```bash
 go mod tidy
 ```
 
 #### Verify locally
 
-```
+```bash
 go vet ./...
 go build ./...
 go test -count=1 -short ./netbox/...
@@ -111,7 +111,7 @@ If any of these fail, fix them on this branch — either as a new commit or by a
 
 If you fix anything in the test file or other patch-related files, amend into the most recent cherry-pick:
 
-```
+```bash
 git add <files>
 git commit --amend --no-edit
 ```
@@ -120,7 +120,7 @@ git commit --amend --no-edit
 
 The release pipeline is the only place we have full cross-platform build coverage. Tags are immutable once published, so always prerelease first:
 
-```
+```bash
 git push -u origin rebase-onto-upstream-<MMMYYYY>
 git tag -a vA.B.C-tenstorrent-rc1 -m "Prerelease, rebased on upstream <sha>"
 git push origin vA.B.C-tenstorrent-rc1
@@ -130,19 +130,19 @@ git push origin vA.B.C-tenstorrent-rc1
 
 Watch the release workflow:
 
-```
+```bash
 gh run watch <run-id> --repo tenstorrent/terraform-provider-netbox --exit-status
 ```
 
 Or list runs to find it:
 
-```
+```bash
 gh run list --repo tenstorrent/terraform-provider-netbox --limit 5
 ```
 
 The build takes ~6 minutes. On success, verify all artifacts published:
 
-```
+```bash
 gh release view vA.B.C-tenstorrent-rc1 --repo tenstorrent/terraform-provider-netbox
 ```
 
