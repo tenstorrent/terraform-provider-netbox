@@ -151,7 +151,7 @@ When adding a new delta, copy this template:
 - **Type:** Bug fix
 - **Introduced:** 2026-05 (`v5.3.5`)
 - **Files:** `netbox/resource_netbox_ip_range.go`
-- **Tests:** `TestAccNetboxIpRange_tenantOnCreate`
+- **Tests:** `TestAccNetboxIpRange_with_dependencies` (exercises `tenant_id`, `vrf_id`, `role_id` on Create)
 - **Why:** The `Create` function built the initial API POST without `Tenant`, `Vrf`, or `Role`, intending to set them in the subsequent `Update` call. NetBox rejects the POST with a 400 if a site policy requires a tenant (`"Tenant is required"`), so the resource could never be created in those environments.
 - **What:** Sets `data.Tenant`, `data.Vrf`, and `data.Role` directly in the `Create` function before the API call, mirroring the pattern already used in the `Update` path.
 - **Upstream candidate:** Yes — same pattern likely affects other resources. Currently parked per user direction.
@@ -163,7 +163,7 @@ When adding a new delta, copy this template:
 - **Type:** Bug fix
 - **Introduced:** 2026-05 (`v5.3.5`)
 - **Files:** `netbox/custom_fields.go`, `netbox/resource_netbox_device_type.go`
-- **Tests:** `TestAccNetboxDeviceType_cf_json_roundtrip`
+- **Tests:** `TestAccNetboxDeviceType_extendedFields` (uses `jsonencode()`), `TestAccNetboxDeviceType_cf_clear`, `TestAccNetboxDeviceType_cf_unrelatedRegistered`
 - **Why:** JSON-typed custom fields (e.g. `device_specs`, `system_specs`) were being stored in NetBox as literal JSON strings instead of JSON objects. The provider's `custom_fields` schema is `map(string)`, so HCL authors use `jsonencode({...})` to produce a JSON string. The Create/Update path was sending that string as-is to the NetBox API, which double-encoded it — NetBox stored `"{\"key\":\"val\"}"` (a string) instead of `{"key":"val"}` (an object).
 - **What:** Introduces `coerceJSONStringValue` helper in `custom_fields.go`. When a custom field value is a string that parses as a JSON object or array, it is unmarshalled to a native Go type before being sent to the API. Applied in both `getCustomFields` (used by Create) and `customFieldsForUpdate` (used by Update). The `netbox_device_type` Read path is updated to use `readCustomFields`, which serialises JSON objects back to strings for consistent state representation.
 - **Upstream candidate:** Yes — same double-encoding bug affects any resource that exposes JSON-typed CFs. Currently parked per user direction.
