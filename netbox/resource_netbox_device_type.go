@@ -231,7 +231,7 @@ func resourceNetboxDeviceTypeCreate(d *schema.ResourceData, m interface{}) error
 	data.ExcludeFromUtilization = d.Get("exclude_from_utilization").(bool)
 
 	if cf, ok := d.GetOk(customFieldsKey); ok {
-		data.CustomFields = getCustomFields(cf)
+		data.CustomFields = writeCustomFields(cf)
 	}
 
 	var err error

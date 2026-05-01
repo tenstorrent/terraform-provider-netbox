@@ -62,11 +62,28 @@ func getCustomFields(cf interface{}) map[string]interface{} {
 		if s, isStr := value.(string); isStr && s == "" {
 			continue
 		}
-		result[key] = coerceJSONStringValue(value)
+		result[key] = value
 	}
 
 	if len(result) == 0 {
 		return nil
+	}
+	return result
+}
+
+// writeCustomFields prepares a custom fields map for API Create calls.
+// It filters unset values (same as getCustomFields) and additionally coerces
+// any JSON string produced by jsonencode() in HCL into a native Go type so
+// the API client serialises it as a proper JSON object/array rather than a
+// quoted string. Only used on write paths — never on Read.
+func writeCustomFields(cf interface{}) map[string]interface{} {
+	raw := getCustomFields(cf)
+	if raw == nil {
+		return nil
+	}
+	result := make(map[string]interface{}, len(raw))
+	for k, v := range raw {
+		result[k] = coerceJSONStringValue(v)
 	}
 	return result
 }
@@ -107,38 +124,21 @@ func customFieldsForUpdate(d *schema.ResourceData) interface{} {
 	return result
 }
 
-// readCustomFields is used in resource Read paths. It combines the nil/empty
-// filtering of getCustomFields (so unset NetBox CFs don't pollute state) with
-// the string serialisation of flattenCustomFields (so JSON-object CFs land in
-// state as JSON strings that can be compared against jsonencode() in HCL).
+// readCustomFields is used in resource Read paths. It builds on
+// flattenCustomFields (which stringifies all values) and then removes any keys
+// that NetBox returned as "unset" (nil → "" by flattenCustomFields). This
+// prevents ghost keys for CFs that are registered on the content-type but not
+// set on this specific object from polluting Terraform state.
 func readCustomFields(cf interface{}) map[string]interface{} {
-	cfm, ok := cf.(map[string]interface{})
-	if !ok || len(cfm) == 0 {
+	result := flattenCustomFields(cf)
+	if result == nil {
 		return nil
 	}
-
-	result := make(map[string]interface{})
-	for key, value := range cfm {
-		if value == nil {
-			continue
-		}
-		if s, isStr := value.(string); isStr && s == "" {
-			continue
-		}
-		switch v := value.(type) {
-		case string:
-			result[key] = v
-		case float64, int, int64, bool:
-			result[key] = fmt.Sprintf("%v", v)
-		default:
-			if jsonBytes, err := json.Marshal(value); err == nil {
-				result[key] = string(jsonBytes)
-			} else {
-				result[key] = fmt.Sprintf("%v", value)
-			}
+	for k, v := range result {
+		if s, ok := v.(string); ok && s == "" {
+			delete(result, k)
 		}
 	}
-
 	if len(result) == 0 {
 		return nil
 	}
