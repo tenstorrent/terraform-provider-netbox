@@ -158,14 +158,14 @@ When adding a new delta, copy this template:
 - **Related go-netbox change:** None
 - **Status:** Active
 
-#### `cf-json-coercion` — JSON string coercion in `getCustomFields` and `customFieldsForUpdate`
+#### `cf-json-coercion` — JSON string coercion in write paths + unified Read helper
 
 - **Type:** Bug fix
 - **Introduced:** 2026-05 (`v5.3.5`)
 - **Files:** `netbox/custom_fields.go`, `netbox/resource_netbox_device_type.go`
 - **Tests:** `TestAccNetboxDeviceType_extendedFields` (uses `jsonencode()`), `TestAccNetboxDeviceType_cf_clear`, `TestAccNetboxDeviceType_cf_unrelatedRegistered`
 - **Why:** JSON-typed custom fields (e.g. `device_specs`, `system_specs`) were being stored in NetBox as literal JSON strings instead of JSON objects. The provider's `custom_fields` schema is `map(string)`, so HCL authors use `jsonencode({...})` to produce a JSON string. The Create/Update path was sending that string as-is to the NetBox API, which double-encoded it — NetBox stored `"{\"key\":\"val\"}"` (a string) instead of `{"key":"val"}` (an object).
-- **What:** Introduces `coerceJSONStringValue` helper in `custom_fields.go`. When a custom field value is a string that parses as a JSON object or array, it is unmarshalled to a native Go type before being sent to the API. Applied in both `getCustomFields` (used by Create) and `customFieldsForUpdate` (used by Update). The `netbox_device_type` Read path is updated to use `readCustomFields`, which serialises JSON objects back to strings for consistent state representation.
+- **What:** Introduces `coerceJSONStringValue` helper and a new `writeCustomFields()` function in `custom_fields.go`. When a custom field value is a string that parses as a JSON object or array, `coerceJSONStringValue` unmarshals it to a native Go type before sending to the API. `writeCustomFields` is used in Create paths; `customFieldsForUpdate` (Update path) also applies coercion. `getCustomFields` is kept as a pure filter/nil-stripper with no coercion so it stays safe for Read paths. `readCustomFields` is refactored to build on `flattenCustomFields` (eliminating duplication) and then strips empty-string keys. The `netbox_device_type` Read path is updated to use `readCustomFields` so JSON objects from the API round-trip back to strings in state, matching `jsonencode()` output.
 - **Upstream candidate:** Yes — same double-encoding bug affects any resource that exposes JSON-typed CFs. Currently parked per user direction.
 - **Related go-netbox change:** None
 - **Status:** Active
