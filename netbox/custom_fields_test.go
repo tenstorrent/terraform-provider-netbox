@@ -321,6 +321,21 @@ func TestWriteCustomFields(t *testing.T) {
 			},
 			wantKeys: []string{"status"},
 		},
+		{
+			name: "empty string is preserved (not stripped like on Read)",
+			input: map[string]interface{}{
+				"text_field": "",
+			},
+			wantKeys: []string{"text_field"},
+		},
+		{
+			name: "nil stripped but empty string preserved together",
+			input: map[string]interface{}{
+				"set_to_empty": "",
+				"not_set":      nil,
+			},
+			wantKeys: []string{"set_to_empty"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -338,6 +353,16 @@ func TestWriteCustomFields(t *testing.T) {
 			for _, k := range tt.wantKeys {
 				if _, ok := result[k]; !ok {
 					t.Errorf("expected key %q in result", k)
+				}
+			}
+			// Verify nil keys were dropped
+			if input, ok := tt.input.(map[string]interface{}); ok {
+				for k, v := range input {
+					if v == nil {
+						if _, exists := result[k]; exists {
+							t.Errorf("nil key %q should have been dropped from result", k)
+						}
+					}
 				}
 			}
 			// Verify JSON object coercion happened

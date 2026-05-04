@@ -72,18 +72,27 @@ func getCustomFields(cf interface{}) map[string]interface{} {
 }
 
 // writeCustomFields prepares a custom fields map for API Create calls.
-// It filters unset values (same as getCustomFields) and additionally coerces
-// any JSON string produced by jsonencode() in HCL into a native Go type so
-// the API client serialises it as a proper JSON object/array rather than a
-// quoted string. Only used on write paths — never on Read.
+// Only nil values are dropped — nil in HCL means the key was not configured
+// at all, so omitting it from the POST is correct. Explicit empty strings are
+// preserved: the user is intentionally setting the CF to "" (e.g. to clear a
+// text field that may have been set previously via some other tool).
+// JSON strings produced by jsonencode() are coerced to native Go types so the
+// API client serialises them as proper JSON objects/arrays.
+// Only used on write paths — never on Read.
 func writeCustomFields(cf interface{}) map[string]interface{} {
-	raw := getCustomFields(cf)
-	if raw == nil {
+	cfm, ok := cf.(map[string]interface{})
+	if !ok || len(cfm) == 0 {
 		return nil
 	}
-	result := make(map[string]interface{}, len(raw))
-	for k, v := range raw {
+	result := make(map[string]interface{}, len(cfm))
+	for k, v := range cfm {
+		if v == nil {
+			continue
+		}
 		result[k] = coerceJSONStringValue(v)
+	}
+	if len(result) == 0 {
+		return nil
 	}
 	return result
 }
