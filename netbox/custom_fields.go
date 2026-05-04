@@ -72,10 +72,13 @@ func getCustomFields(cf interface{}) map[string]interface{} {
 }
 
 // writeCustomFields prepares a custom fields map for API Create calls.
-// Mirrors the nil+empty-string filtering of getCustomFields so that Write and
-// Read treat "not set" identically — preventing perpetual diffs for configs
-// that contain "" values. To clear a CF, remove it from HCL entirely;
-// customFieldsForUpdate will then null it in the PATCH payload.
+// Both nil and "" are treated as "not set" and are dropped, matching the
+// behaviour of readCustomFields on the Read path. This ensures that a config
+// containing nil or "" values converges without perpetual diffs.
+// Note: "" cannot be used to set a text CF to an empty string — it is
+// indistinguishable from "unset" in both directions. To clear a CF that was
+// previously set, remove the key from HCL; customFieldsForUpdate will then
+// send an explicit null in the PATCH payload.
 // JSON strings produced by jsonencode() are coerced to native Go types so the
 // API client serialises them as proper JSON objects/arrays rather than quoted
 // strings. Only used on write paths — never on Read.
@@ -121,6 +124,11 @@ func writeCustomFields(cf interface{}) map[string]interface{} {
 //   - explicitly nulls every key that used to be in state but is gone from config,
 //     so NetBox actually clears them
 //
+// Empty-string values in newMap are treated as "not set" (same as Create and
+// Read paths) and leave the nil pre-populated by the oldMap loop in place,
+// which causes NetBox to clear the field — consistent with the "remove the key
+// to clear it" contract documented on writeCustomFields.
+//
 // When neither old state nor new config has any custom fields, it returns nil
 // so omitempty correctly omits the field entirely.
 func customFieldsForUpdate(d *schema.ResourceData) interface{} {
@@ -137,6 +145,12 @@ func customFieldsForUpdate(d *schema.ResourceData) interface{} {
 		result[k] = nil
 	}
 	for k, v := range newMap {
+		if v == nil {
+			continue
+		}
+		if s, isStr := v.(string); isStr && s == "" {
+			continue // leave nil from oldMap loop → NetBox clears the field
+		}
 		result[k] = coerceJSONStringValue(v)
 	}
 	return result
