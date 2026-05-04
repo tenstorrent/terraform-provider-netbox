@@ -222,6 +222,231 @@ func TestFlattenCustomFields_ComplexRealWorldExample(t *testing.T) {
 	}
 }
 
+func TestCoerceJSONStringValue(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    interface{}
+		expected interface{}
+	}{
+		{
+			name:     "JSON object string is coerced to map",
+			input:    `{"cores":72,"memory_gb":128}`,
+			expected: map[string]interface{}{"cores": float64(72), "memory_gb": float64(128)},
+		},
+		{
+			name:     "JSON array string is coerced to slice",
+			input:    `["a","b","c"]`,
+			expected: []interface{}{"a", "b", "c"},
+		},
+		{
+			name:     "plain string stays unchanged",
+			input:    "active",
+			expected: "active",
+		},
+		{
+			name:     "JSON number string stays unchanged (not object/array)",
+			input:    "42",
+			expected: "42",
+		},
+		{
+			name:     "JSON bool string stays unchanged",
+			input:    "true",
+			expected: "true",
+		},
+		{
+			name:     "invalid JSON string stays unchanged",
+			input:    "{not valid json",
+			expected: "{not valid json",
+		},
+		{
+			name:     "non-string value passes through unchanged",
+			input:    map[string]interface{}{"already": "a map"},
+			expected: map[string]interface{}{"already": "a map"},
+		},
+		{
+			name:     "nil passes through unchanged",
+			input:    nil,
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := coerceJSONStringValue(tt.input)
+			resultJSON, _ := json.Marshal(result)
+			expectedJSON, _ := json.Marshal(tt.expected)
+			if string(resultJSON) != string(expectedJSON) {
+				t.Errorf("expected %s, got %s", expectedJSON, resultJSON)
+			}
+		})
+	}
+}
+
+func TestWriteCustomFields(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    interface{}
+		wantKeys []string
+		wantNil  bool
+	}{
+		{
+			name:    "nil input returns nil",
+			input:   nil,
+			wantNil: true,
+		},
+		{
+			name:    "empty map returns nil",
+			input:   map[string]interface{}{},
+			wantNil: true,
+		},
+		{
+			name: "nil value keys are stripped",
+			input: map[string]interface{}{
+				"set":   "value",
+				"unset": nil,
+			},
+			wantKeys: []string{"set"},
+		},
+		{
+			name: "JSON object string is coerced to map",
+			input: map[string]interface{}{
+				"device_specs": `{"cores":72}`,
+			},
+			wantKeys: []string{"device_specs"},
+		},
+		{
+			name: "plain string value stays as string",
+			input: map[string]interface{}{
+				"status": "active",
+			},
+			wantKeys: []string{"status"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := writeCustomFields(tt.input)
+			if tt.wantNil {
+				if result != nil {
+					t.Errorf("expected nil, got %v", result)
+				}
+				return
+			}
+			if result == nil {
+				t.Fatal("expected non-nil result")
+			}
+			for _, k := range tt.wantKeys {
+				if _, ok := result[k]; !ok {
+					t.Errorf("expected key %q in result", k)
+				}
+			}
+			// Verify JSON object coercion happened
+			if ds, ok := tt.input.(map[string]interface{})["device_specs"]; ok {
+				if _, isStr := ds.(string); isStr {
+					if _, isMap := result["device_specs"].(map[string]interface{}); !isMap {
+						t.Errorf("expected device_specs to be coerced to map, got %T", result["device_specs"])
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestReadCustomFields(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    interface{}
+		expected map[string]interface{}
+	}{
+		{
+			name:     "nil input returns nil",
+			input:    nil,
+			expected: nil,
+		},
+		{
+			name:     "empty map returns nil",
+			input:    map[string]interface{}{},
+			expected: nil,
+		},
+		{
+			name: "nil value keys are stripped (unset CFs)",
+			input: map[string]interface{}{
+				"set_field":   "value",
+				"unset_field": nil,
+			},
+			expected: map[string]interface{}{
+				"set_field": "value",
+			},
+		},
+		{
+			name: "empty string keys are stripped (unset text CFs on NetBox 4.4)",
+			input: map[string]interface{}{
+				"set_field":   "value",
+				"unset_field": "",
+			},
+			expected: map[string]interface{}{
+				"set_field": "value",
+			},
+		},
+		{
+			name: "map with only unset values returns nil",
+			input: map[string]interface{}{
+				"unset1": nil,
+				"unset2": "",
+			},
+			expected: nil,
+		},
+		{
+			name: "JSON object from API is stringified for state",
+			input: map[string]interface{}{
+				"device_specs": map[string]interface{}{"cores": float64(72)},
+			},
+			expected: map[string]interface{}{
+				"device_specs": `{"cores":72}`,
+			},
+		},
+		{
+			name: "plain string stays as string",
+			input: map[string]interface{}{
+				"status": "active",
+			},
+			expected: map[string]interface{}{
+				"status": "active",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := readCustomFields(tt.input)
+			if tt.expected == nil {
+				if result != nil {
+					t.Errorf("expected nil, got %v", result)
+				}
+				return
+			}
+			if result == nil {
+				t.Fatal("expected non-nil result")
+			}
+			if len(result) != len(tt.expected) {
+				t.Errorf("expected %d keys, got %d: %v", len(tt.expected), len(result), result)
+			}
+			for k, expectedVal := range tt.expected {
+				actualVal, ok := result[k]
+				if !ok {
+					t.Errorf("expected key %q not found", k)
+					continue
+				}
+				expectedJSON, _ := json.Marshal(expectedVal)
+				actualJSON, _ := json.Marshal(actualVal)
+				if string(expectedJSON) != string(actualJSON) {
+					t.Errorf("key %q: expected %s, got %s", k, expectedJSON, actualJSON)
+				}
+			}
+		})
+	}
+}
+
 func TestGetCustomFields(t *testing.T) {
 	tests := []struct {
 		name     string
