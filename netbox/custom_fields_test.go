@@ -322,19 +322,19 @@ func TestWriteCustomFields(t *testing.T) {
 			wantKeys: []string{"status"},
 		},
 		{
-			name: "empty string is preserved (not stripped like on Read)",
+			name: "empty string is stripped (consistent with Read to avoid perpetual diffs)",
 			input: map[string]interface{}{
 				"text_field": "",
 			},
-			wantKeys: []string{"text_field"},
+			wantNil: true,
 		},
 		{
-			name: "nil stripped but empty string preserved together",
+			name: "nil and empty string both stripped, leaving nothing",
 			input: map[string]interface{}{
-				"set_to_empty": "",
-				"not_set":      nil,
+				"unset1": nil,
+				"unset2": "",
 			},
-			wantKeys: []string{"set_to_empty"},
+			wantNil: true,
 		},
 	}
 

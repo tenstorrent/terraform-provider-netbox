@@ -72,13 +72,19 @@ func getCustomFields(cf interface{}) map[string]interface{} {
 }
 
 // writeCustomFields prepares a custom fields map for API Create calls.
-// Only nil values are dropped — nil in HCL means the key was not configured
-// at all, so omitting it from the POST is correct. Explicit empty strings are
-// preserved: the user is intentionally setting the CF to "" (e.g. to clear a
-// text field that may have been set previously via some other tool).
+// Mirrors the nil+empty-string filtering of getCustomFields so that Write and
+// Read treat "not set" identically — preventing perpetual diffs for configs
+// that contain "" values. To clear a CF, remove it from HCL entirely;
+// customFieldsForUpdate will then null it in the PATCH payload.
 // JSON strings produced by jsonencode() are coerced to native Go types so the
-// API client serialises them as proper JSON objects/arrays.
-// Only used on write paths — never on Read.
+// API client serialises them as proper JSON objects/arrays rather than quoted
+// strings. Only used on write paths — never on Read.
+//
+// Known limitation: coercion is based on whether the string parses as a JSON
+// object/array, not on the CF's actual type. A plain-text CF whose value
+// happens to look like JSON (e.g. '{"key":"val"}') will be coerced. This is
+// unlikely in practice but users should avoid storing raw JSON strings in
+// non-JSON-typed CFs when managed by Terraform.
 func writeCustomFields(cf interface{}) map[string]interface{} {
 	cfm, ok := cf.(map[string]interface{})
 	if !ok || len(cfm) == 0 {
@@ -87,6 +93,9 @@ func writeCustomFields(cf interface{}) map[string]interface{} {
 	result := make(map[string]interface{}, len(cfm))
 	for k, v := range cfm {
 		if v == nil {
+			continue
+		}
+		if s, isStr := v.(string); isStr && s == "" {
 			continue
 		}
 		result[k] = coerceJSONStringValue(v)
