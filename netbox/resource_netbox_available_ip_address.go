@@ -229,10 +229,13 @@ func resourceNetboxAvailableIPAddressCreate(d *schema.ResourceData, m interface{
 		}
 	}
 
-	// Create the chosen IP address directly.
+	// Create the chosen IP address directly. Tags must be a non-null slice
+	// (NetBox rejects null); the full set of tags/fields is applied by
+	// resourceNetboxAvailableIPAddressUpdate immediately after.
 	createData := models.WritableIPAddress{}
 	createData.Address = strToPtr(chosenAddress)
 	createData.Status = d.Get("status").(string)
+	createData.Tags = []*models.NestedTag{}
 	if tenantID != 0 {
 		createData.Tenant = &tenantID
 	}
