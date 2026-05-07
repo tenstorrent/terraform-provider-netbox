@@ -472,3 +472,118 @@ func init() {
 		},
 	})
 }
+
+// --- Unit tests for pickShuffledIP (no NetBox required) ---
+
+func makeAvailableIPs(addresses []string) []*models.AvailableIP {
+	ips := make([]*models.AvailableIP, len(addresses))
+	for i, a := range addresses {
+		addr := a
+		ips[i] = &models.AvailableIP{Address: addr}
+	}
+	return ips
+}
+
+func TestPickShuffledIP_emptyPool(t *testing.T) {
+	_, err := pickShuffledIP([]*models.AvailableIP{}, "full")
+	if err == nil {
+		t.Fatal("expected error for empty pool, got nil")
+	}
+}
+
+func TestPickShuffledIP_singleEntry_usesIt(t *testing.T) {
+	pool := makeAvailableIPs([]string{"10.0.0.1/24"})
+	got, err := pickShuffledIP(pool, "full")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "10.0.0.1/24" {
+		t.Errorf("expected 10.0.0.1/24, got %s", got)
+	}
+}
+
+func TestPickShuffledIP_full_neverPicksFirst(t *testing.T) {
+	addrs := []string{
+		"10.0.0.1/24", "10.0.0.2/24", "10.0.0.3/24",
+		"10.0.0.4/24", "10.0.0.5/24", "10.0.0.6/24",
+	}
+	pool := makeAvailableIPs(addrs)
+	for i := 0; i < 200; i++ {
+		got, err := pickShuffledIP(pool, "full")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got == "10.0.0.1/24" {
+			t.Errorf("full shuffle picked the first IP (10.0.0.1/24) on iteration %d", i)
+		}
+	}
+}
+
+func TestPickShuffledIP_full_coversAllNonFirst(t *testing.T) {
+	addrs := []string{
+		"10.0.0.1/24", "10.0.0.2/24", "10.0.0.3/24",
+		"10.0.0.4/24", "10.0.0.5/24",
+	}
+	pool := makeAvailableIPs(addrs)
+	seen := map[string]bool{}
+	for i := 0; i < 2000; i++ {
+		got, err := pickShuffledIP(pool, "full")
+		if err != nil {
+			t.Fatalf("pickShuffledIP returned unexpected error: %v", err)
+		}
+		seen[got] = true
+	}
+	// Every address except the first should appear
+	for _, a := range addrs[1:] {
+		if !seen[a] {
+			t.Errorf("full shuffle never picked %s in 2000 iterations", a)
+		}
+	}
+	if seen[addrs[0]] {
+		t.Errorf("full shuffle picked the first IP %s", addrs[0])
+	}
+}
+
+func TestPickShuffledIP_low_staysInBottom20Percent(t *testing.T) {
+	// 10 IPs: pool[0] excluded, candidates = pool[1:9] (8 entries)
+	// 20% of 8 = 1.6 -> ceil = 2, so only pool[1] and pool[2] should be picked
+	addrs := make([]string, 10)
+	for i := range addrs {
+		addrs[i] = fmt.Sprintf("10.0.0.%d/24", i+1)
+	}
+	pool := makeAvailableIPs(addrs)
+	allowed := map[string]bool{addrs[1]: true, addrs[2]: true}
+	for i := 0; i < 500; i++ {
+		got, err := pickShuffledIP(pool, "low")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !allowed[got] {
+			t.Errorf("low shuffle picked %s which is outside allowed set %v", got, allowed)
+		}
+	}
+}
+
+func TestPickShuffledIP_low_twoEntries_picksSecond(t *testing.T) {
+	pool := makeAvailableIPs([]string{"10.0.0.1/24", "10.0.0.2/24"})
+	for i := 0; i < 50; i++ {
+		got, err := pickShuffledIP(pool, "low")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != "10.0.0.2/24" {
+			t.Errorf("expected 10.0.0.2/24, got %s", got)
+		}
+	}
+}
+
+func TestPickShuffledIP_low_singleEntry_usesIt(t *testing.T) {
+	pool := makeAvailableIPs([]string{"10.0.0.1/24"})
+	got, err := pickShuffledIP(pool, "low")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "10.0.0.1/24" {
+		t.Errorf("expected 10.0.0.1/24, got %s", got)
+	}
+}
