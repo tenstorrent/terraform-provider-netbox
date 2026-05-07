@@ -2,6 +2,8 @@ package netbox
 
 import (
 	"fmt"
+	"math"
+	"math/rand"
 	"strconv"
 	"strings"
 
@@ -10,6 +12,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
+
+var resourceNetboxAvailableIPAddressShuffleModeOptions = []string{"", "full", "low"}
 
 func resourceNetboxAvailableIPAddress() *schema.Resource {
 	return &schema.Resource{
@@ -106,6 +110,17 @@ This resource will retrieve the next available IP address from a given prefix or
 				Description:  buildValidValueDescription(resourceNetboxIPAddressRoleOptions),
 			},
 			customFieldsKey: customFieldsSchema,
+			"shuffle_mode": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				ForceNew:     true,
+				Default:      "",
+				ValidateFunc: validation.StringInSlice(resourceNetboxAvailableIPAddressShuffleModeOptions, false),
+				Description: "Controls IP selection strategy. Default (empty string) selects the lowest available IP. " +
+					"`full` selects a random IP from all available addresses in the prefix. " +
+					"`low` selects a random IP from the bottom 20% of available addresses. " +
+					"Both shuffle modes skip the single lowest available IP unless it is the only one free.",
+			},
 		},
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
@@ -113,42 +128,124 @@ This resource will retrieve the next available IP address from a given prefix or
 	}
 }
 
+// pickShuffledIP selects an IP address from the available pool according to the given shuffle mode.
+//
+// Rules:
+//   - The very lowest available IP (index 0) is excluded from the candidate pool unless it is the
+//     only free IP remaining.
+//   - "full": uniform random pick from the full candidate pool.
+//   - "low":  uniform random pick from the first 20% of the candidate pool (at least 1 entry).
+func pickShuffledIP(available []*models.AvailableIP, mode string) (string, error) {
+	if len(available) == 0 {
+		return "", fmt.Errorf("no available IP addresses")
+	}
+
+	candidates := available
+	if len(available) > 1 {
+		// skip the absolute lowest address
+		candidates = available[1:]
+	}
+
+	if mode == "low" {
+		// keep only the bottom 20% of the original list (after skipping the first)
+		cutoff := int(math.Ceil(float64(len(candidates)) * 0.20))
+		if cutoff < 1 {
+			cutoff = 1
+		}
+		if cutoff < len(candidates) {
+			candidates = candidates[:cutoff]
+		}
+	}
+
+	chosen := candidates[rand.Intn(len(candidates))]
+	return chosen.Address, nil
+}
+
 func resourceNetboxAvailableIPAddressCreate(d *schema.ResourceData, m interface{}) error {
 	api := m.(*providerState)
 	prefixID := int64(d.Get("prefix_id").(int))
 	rangeID := int64(d.Get("ip_range_id").(int))
 	tenantID := int64(d.Get("tenant_id").(int))
+	shuffleMode := d.Get("shuffle_mode").(string)
 
-	data := models.WritableAvailableIP{}
+	if shuffleMode == "" {
+		// Default behaviour: let NetBox pick the lowest available IP.
+		data := models.WritableAvailableIP{}
+		if tenantID != 0 {
+			data.Tenant = tenantID
+		}
 
-	if tenantID != 0 {
-		data.Tenant = tenantID
+		if prefixID != 0 {
+			params := ipam.NewIpamPrefixesAvailableIpsCreateParams().WithID(prefixID).WithData([]*models.WritableAvailableIP{&data})
+			res, err := api.Ipam.IpamPrefixesAvailableIpsCreate(params, nil)
+			if err != nil {
+				return err
+			}
+			if len(res.Payload) == 0 {
+				return fmt.Errorf("no available IP addresses in prefix %d", prefixID)
+			}
+			d.SetId(strconv.FormatInt(res.Payload[0].ID, 10))
+			d.Set("ip_address", *res.Payload[0].Address)
+		}
+		if rangeID != 0 {
+			params := ipam.NewIpamIPRangesAvailableIpsCreateParams().WithID(rangeID).WithData([]*models.WritableAvailableIP{&data})
+			res, err := api.Ipam.IpamIPRangesAvailableIpsCreate(params, nil)
+			if err != nil {
+				return err
+			}
+			if len(res.Payload) == 0 {
+				return fmt.Errorf("no available IP addresses in IP range %d", rangeID)
+			}
+			d.SetId(strconv.FormatInt(res.Payload[0].ID, 10))
+			d.Set("ip_address", *res.Payload[0].Address)
+		}
+		return resourceNetboxAvailableIPAddressUpdate(d, m)
 	}
+
+	// Shuffle mode: list available IPs, pick one, then create it explicitly.
+	var chosenAddress string
 
 	if prefixID != 0 {
-		params := ipam.NewIpamPrefixesAvailableIpsCreateParams().WithID(prefixID).WithData([]*models.WritableAvailableIP{&data})
-		res, err := api.Ipam.IpamPrefixesAvailableIpsCreate(params, nil)
+		listParams := ipam.NewIpamPrefixesAvailableIpsListParams().WithID(prefixID)
+		listRes, err := api.Ipam.IpamPrefixesAvailableIpsList(listParams, nil)
 		if err != nil {
-			return err
+			return fmt.Errorf("error listing available IPs for prefix %d: %s", prefixID, err)
 		}
-		if len(res.Payload) == 0 {
-			return fmt.Errorf("no available IP addresses in prefix %d", prefixID)
+		chosenAddress, err = pickShuffledIP(listRes.Payload, shuffleMode)
+		if err != nil {
+			return fmt.Errorf("prefix %d: %s", prefixID, err)
 		}
-		d.SetId(strconv.FormatInt(res.Payload[0].ID, 10))
-		d.Set("ip_address", *res.Payload[0].Address)
 	}
 	if rangeID != 0 {
-		params := ipam.NewIpamIPRangesAvailableIpsCreateParams().WithID(rangeID).WithData([]*models.WritableAvailableIP{&data})
-		res, err := api.Ipam.IpamIPRangesAvailableIpsCreate(params, nil)
+		listParams := ipam.NewIpamIPRangesAvailableIpsListParams().WithID(rangeID)
+		listRes, err := api.Ipam.IpamIPRangesAvailableIpsList(listParams, nil)
 		if err != nil {
-			return err
+			return fmt.Errorf("error listing available IPs for IP range %d: %s", rangeID, err)
 		}
-		if len(res.Payload) == 0 {
-			return fmt.Errorf("no available IP addresses in IP range %d", rangeID)
+		var err2 error
+		chosenAddress, err2 = pickShuffledIP(listRes.Payload, shuffleMode)
+		if err2 != nil {
+			return fmt.Errorf("IP range %d: %s", rangeID, err2)
 		}
-		d.SetId(strconv.FormatInt(res.Payload[0].ID, 10))
-		d.Set("ip_address", *res.Payload[0].Address)
 	}
+
+	// Create the chosen IP address directly.
+	createData := models.WritableIPAddress{}
+	createData.Address = strToPtr(chosenAddress)
+	createData.Status = d.Get("status").(string)
+	if tenantID != 0 {
+		createData.Tenant = &tenantID
+	}
+
+	createParams := ipam.NewIpamIPAddressesCreateParams().WithData(&createData)
+	createRes, err := api.Ipam.IpamIPAddressesCreate(createParams, nil)
+	if err != nil {
+		return fmt.Errorf("error creating IP address %s: %s", chosenAddress, err)
+	}
+
+	d.SetId(strconv.FormatInt(createRes.Payload.ID, 10))
+	d.Set("ip_address", *createRes.Payload.Address)
+
 	return resourceNetboxAvailableIPAddressUpdate(d, m)
 }
 
