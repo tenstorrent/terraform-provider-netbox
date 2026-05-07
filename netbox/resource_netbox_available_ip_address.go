@@ -229,13 +229,17 @@ func resourceNetboxAvailableIPAddressCreate(d *schema.ResourceData, m interface{
 		}
 	}
 
-	// Create the chosen IP address directly. Tags must be a non-null slice
-	// (NetBox rejects null); the full set of tags/fields is applied by
-	// resourceNetboxAvailableIPAddressUpdate immediately after.
+	// Create the chosen IP address directly. Unlike the auto-assign endpoints
+	// (IpamPrefixesAvailableIpsCreate / IpamIPRangesAvailableIpsCreate) which
+	// inherit VRF from the prefix/range, IpamIPAddressesCreate requires all
+	// mandatory fields explicitly. Tags must be a non-null slice. The full set
+	// of remaining fields is applied by resourceNetboxAvailableIPAddressUpdate
+	// immediately after.
 	createData := models.WritableIPAddress{}
 	createData.Address = strToPtr(chosenAddress)
 	createData.Status = d.Get("status").(string)
 	createData.Tags = []*models.NestedTag{}
+	createData.Vrf = getOptionalInt(d, "vrf_id")
 	if tenantID != 0 {
 		createData.Tenant = &tenantID
 	}
