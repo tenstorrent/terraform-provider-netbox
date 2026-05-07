@@ -116,10 +116,10 @@ This resource will retrieve the next available IP address from a given prefix or
 				ForceNew:     true,
 				Default:      "",
 				ValidateFunc: validation.StringInSlice(resourceNetboxAvailableIPAddressShuffleModeOptions, false),
-				Description: "Controls IP selection strategy. Default (empty string) selects the lowest available IP. " +
-					"`full` selects a random IP from all available addresses in the prefix. " +
-					"`low` selects a random IP from the bottom 20% of available addresses. " +
-					"Both shuffle modes skip the single lowest available IP unless it is the only one free.",
+			Description: "Controls IP selection strategy. Default (empty string) selects the lowest available IP. " +
+				"`full` selects a random IP from all available addresses in the prefix or range. " +
+				"`low` selects a random IP from the bottom 20% of available addresses in the prefix or range. " +
+				"Both shuffle modes skip the single lowest available IP unless it is the only one free.",
 			},
 		},
 		Importer: &schema.ResourceImporter{
@@ -209,23 +209,23 @@ func resourceNetboxAvailableIPAddressCreate(d *schema.ResourceData, m interface{
 		listParams := ipam.NewIpamPrefixesAvailableIpsListParams().WithID(prefixID)
 		listRes, err := api.Ipam.IpamPrefixesAvailableIpsList(listParams, nil)
 		if err != nil {
-			return fmt.Errorf("error listing available IPs for prefix %d: %s", prefixID, err)
+			return fmt.Errorf("error listing available IPs for prefix %d: %w", prefixID, err)
 		}
 		chosenAddress, err = pickShuffledIP(listRes.Payload, shuffleMode)
 		if err != nil {
-			return fmt.Errorf("prefix %d: %s", prefixID, err)
+			return fmt.Errorf("prefix %d: %w", prefixID, err)
 		}
 	}
 	if rangeID != 0 {
 		listParams := ipam.NewIpamIPRangesAvailableIpsListParams().WithID(rangeID)
 		listRes, err := api.Ipam.IpamIPRangesAvailableIpsList(listParams, nil)
 		if err != nil {
-			return fmt.Errorf("error listing available IPs for IP range %d: %s", rangeID, err)
+			return fmt.Errorf("error listing available IPs for IP range %d: %w", rangeID, err)
 		}
 		var err2 error
 		chosenAddress, err2 = pickShuffledIP(listRes.Payload, shuffleMode)
 		if err2 != nil {
-			return fmt.Errorf("IP range %d: %s", rangeID, err2)
+			return fmt.Errorf("IP range %d: %w", rangeID, err2)
 		}
 	}
 
@@ -247,7 +247,7 @@ func resourceNetboxAvailableIPAddressCreate(d *schema.ResourceData, m interface{
 	createParams := ipam.NewIpamIPAddressesCreateParams().WithData(&createData)
 	createRes, err := api.Ipam.IpamIPAddressesCreate(createParams, nil)
 	if err != nil {
-		return fmt.Errorf("error creating IP address %s: %s", chosenAddress, err)
+		return fmt.Errorf("error creating IP address %s: %w", chosenAddress, err)
 	}
 
 	d.SetId(strconv.FormatInt(createRes.Payload.ID, 10))

@@ -527,7 +527,10 @@ func TestPickShuffledIP_full_coversAllNonFirst(t *testing.T) {
 	pool := makeAvailableIPs(addrs)
 	seen := map[string]bool{}
 	for i := 0; i < 2000; i++ {
-		got, _ := pickShuffledIP(pool, "full")
+		got, err := pickShuffledIP(pool, "full")
+		if err != nil {
+			t.Fatalf("pickShuffledIP returned unexpected error: %v", err)
+		}
 		seen[got] = true
 	}
 	// Every address except the first should appear
