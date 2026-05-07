@@ -134,6 +134,18 @@ When adding a new delta, copy this template:
 - **Related go-netbox change:** Commit "Add default_platform and exclude_from_utilization to DeviceType models" on `msollanych-tt/go-netbox` master (tagged `v0.5.0`).
 - **Status:** Active
 
+#### `available-ip-shuffle-mode` — `shuffle_mode` on `netbox_available_ip_address`
+
+- **Type:** Feature
+- **Introduced:** 2026-05 (branch `feature/available-ip-shuffle-mode`, PR #7)
+- **Files:** `netbox/resource_netbox_available_ip_address.go`, `netbox/resource_netbox_available_ip_address_test.go`
+- **Tests:** `TestPickShuffledIP_emptyPool`, `TestPickShuffledIP_singleEntry_usesIt`, `TestPickShuffledIP_full_neverPicksFirst`, `TestPickShuffledIP_full_coversAllNonFirst`, `TestPickShuffledIP_low_staysInBottom20Percent`, `TestPickShuffledIP_low_twoEntries_picksSecond`, `TestPickShuffledIP_low_singleEntry_usesIt`
+- **Why:** The top /24 of our /22 prefixes is frequently absent from DNS reverse lookup zones; IPs allocated there fail DNS-dependent provisioning steps. Always picking the lowest available IP means we land in that range regularly.
+- **What:** Adds an optional `shuffle_mode` attribute (default `""`). When set to `"full"`, the resource lists all available IPs in the prefix via `IpamPrefixesAvailableIpsList` / `IpamIPRangesAvailableIpsList`, selects one at random, and creates it via `IpamIPAddressesCreate`. When set to `"low"`, the random selection is restricted to the bottom 20% of the available pool. Both modes skip the absolute lowest available IP (index 0) unless it is the only free address, further reducing the chance of landing in the problematic range. Default `""` preserves existing lowest-available-IP behaviour exactly.
+- **Upstream candidate:** Yes — clean candidate, no go-netbox changes required. All API calls used (`AvailableIpsList`, `IPAddressesCreate`) already exist in upstream go-netbox. Currently parked per user direction.
+- **Related go-netbox change:** None
+- **Status:** Active
+
 If the customer asks about more features, they land here too. New patches should land as discrete commits with descriptive messages so the next rebase is bearable, and they should add a block above with `Status: Active`.
 
 ## Repo layout reminders
