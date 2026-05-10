@@ -113,13 +113,13 @@ This resource will retrieve the next available IP address from a given prefix or
 			"shuffle_mode": {
 				Type:         schema.TypeString,
 				Optional:     true,
-				ForceNew:     true,
 				Default:      "",
 				ValidateFunc: validation.StringInSlice(resourceNetboxAvailableIPAddressShuffleModeOptions, false),
-			Description: "Controls IP selection strategy. Default (empty string) selects the lowest available IP. " +
-				"`full` selects a random IP from all available addresses in the prefix or range. " +
-				"`low` selects a random IP from the bottom 20% of available addresses in the prefix or range. " +
-				"Both shuffle modes skip the single lowest available IP unless it is the only one free.",
+				Description: "Controls IP selection strategy during resource creation. Default (empty string) selects the lowest available IP. " +
+					"`full` selects a random IP from all available addresses in the prefix or range. " +
+					"`low` selects a random IP from the bottom 20% of available addresses in the prefix or range. " +
+					"Both shuffle modes skip the single lowest available IP unless it is the only one free. " +
+					"Changing this after an IP is allocated does not move the existing address; replace the resource to apply a new selection mode.",
 			},
 		},
 		Importer: &schema.ResourceImporter{

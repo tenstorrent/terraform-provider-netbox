@@ -110,6 +110,7 @@ resource "netbox_available_ip_address" "leased" {
 - `object_type` (String) Valid values are `virtualization.vminterface` and `dcim.interface`. Required when `interface_id` is set.
 - `prefix_id` (Number) Exactly one of `prefix_id` or `ip_range_id` must be given.
 - `role` (String) Valid values are `loopback`, `secondary`, `anycast`, `vip`, `vrrp`, `hsrp`, `glbp` and `carp`.
+- `shuffle_mode` (String) Controls IP selection strategy during resource creation. Default (empty string) selects the lowest available IP. `full` selects a random IP from all available addresses in the prefix or range. `low` selects a random IP from the bottom 20% of available addresses in the prefix or range. Both shuffle modes skip the single lowest available IP unless it is the only one free. Changing this after an IP is allocated does not move the existing address; replace the resource to apply a new selection mode. Defaults to `""`.
 - `status` (String) Valid values are `active`, `reserved`, `deprecated`, `dhcp` and `slaac`. Defaults to `active`.
 - `tags` (Set of String)
 - `tenant_id` (Number)
