@@ -9,6 +9,7 @@ import (
 	"github.com/fbreckle/go-netbox/netbox/client/ipam"
 	"github.com/fbreckle/go-netbox/netbox/models"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
 func TestAccNetboxAvailableIPAddress_basic(t *testing.T) {
@@ -62,6 +63,34 @@ resource "netbox_available_ip_address" "test_range" {
 					resource.TestCheckResourceAttr("netbox_available_ip_address.test_range", "ip_address", testIP),
 					resource.TestCheckResourceAttr("netbox_available_ip_address.test_range", "status", "active"),
 					resource.TestCheckResourceAttr("netbox_available_ip_address.test_range", "dns_name", "test_range.mydomain.local"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccNetboxAvailableIPAddress_shuffleModeUpdateDoesNotReplace(t *testing.T) {
+	testPrefix := "1.1.11.0/24"
+	testIP := "1.1.11.1/24"
+	var initialID string
+	var initialIPAddress string
+
+	resource.ParallelTest(t, resource.TestCase{
+		Providers: testAccProviders,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccNetboxAvailableIPAddressShuffleModeConfig(testPrefix, ""),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("netbox_available_ip_address.test", "ip_address", testIP),
+					testAccCheckAvailableIPAddressStable("netbox_available_ip_address.test", &initialID, &initialIPAddress),
+				),
+			},
+			{
+				Config: testAccNetboxAvailableIPAddressShuffleModeConfig(testPrefix, "low"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("netbox_available_ip_address.test", "ip_address", testIP),
+					resource.TestCheckResourceAttr("netbox_available_ip_address.test", "shuffle_mode", "low"),
+					testAccCheckAvailableIPAddressStable("netbox_available_ip_address.test", &initialID, &initialIPAddress),
 				),
 			},
 		},
@@ -443,6 +472,52 @@ resource "netbox_available_ip_address" "test" {
 	})
 }
 
+func testAccNetboxAvailableIPAddressShuffleModeConfig(prefix string, shuffleMode string) string {
+	shuffleModeLine := ""
+	if shuffleMode != "" {
+		shuffleModeLine = fmt.Sprintf("  shuffle_mode = %q\n", shuffleMode)
+	}
+
+	return fmt.Sprintf(`
+resource "netbox_prefix" "test" {
+  prefix = "%[1]s"
+  status = "active"
+  is_pool = false
+}
+resource "netbox_available_ip_address" "test" {
+  prefix_id = netbox_prefix.test.id
+  status = "active"
+  dns_name = "shuffle-mode-update.mydomain.local"
+%[2]s}`, prefix, shuffleModeLine)
+}
+
+func testAccCheckAvailableIPAddressStable(resourceName string, initialID *string, initialIPAddress *string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return fmt.Errorf("resource %s not found in state", resourceName)
+		}
+		if rs.Primary == nil {
+			return fmt.Errorf("resource %s has no primary instance", resourceName)
+		}
+
+		ipAddress := rs.Primary.Attributes["ip_address"]
+		if *initialID == "" {
+			*initialID = rs.Primary.ID
+			*initialIPAddress = ipAddress
+			return nil
+		}
+
+		if rs.Primary.ID != *initialID {
+			return fmt.Errorf("expected %s ID to remain %s, got %s", resourceName, *initialID, rs.Primary.ID)
+		}
+		if ipAddress != *initialIPAddress {
+			return fmt.Errorf("expected %s ip_address to remain %s, got %s", resourceName, *initialIPAddress, ipAddress)
+		}
+		return nil
+	}
+}
+
 func init() {
 	resource.AddTestSweepers("netbox_available_ip_address", &resource.Sweeper{
 		Name:         "netbox_available_ip_address",
@@ -488,6 +563,16 @@ func TestPickShuffledIP_emptyPool(t *testing.T) {
 	_, err := pickShuffledIP([]*models.AvailableIP{}, "full")
 	if err == nil {
 		t.Fatal("expected error for empty pool, got nil")
+	}
+}
+
+func TestResourceNetboxAvailableIPAddress_shuffleModeDoesNotForceNew(t *testing.T) {
+	field, ok := resourceNetboxAvailableIPAddress().Schema["shuffle_mode"]
+	if !ok {
+		t.Fatal("shuffle_mode schema field is missing")
+	}
+	if field.ForceNew {
+		t.Fatal("shuffle_mode must not force replacement of an already allocated IP")
 	}
 }
 
