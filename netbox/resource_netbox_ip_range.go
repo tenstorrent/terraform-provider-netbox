@@ -163,7 +163,7 @@ func resourceNetboxIPRangeRead(d *schema.ResourceData, m interface{}) error {
 	api.readTags(d, res.GetPayload().Tags)
 	// Always set, including with empty map, so out-of-band CF clears propagate
 	// back into Terraform state as drift on the next plan.
-	d.Set(customFieldsKey, getCustomFields(res.GetPayload().CustomFields))
+	d.Set(customFieldsKey, readCustomFields(res.GetPayload().CustomFields))
 
 	return nil
 }

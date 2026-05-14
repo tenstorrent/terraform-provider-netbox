@@ -317,7 +317,7 @@ func resourceNetboxAvailableIPAddressRead(d *schema.ResourceData, m interface{})
 	api.readTags(d, ipAddress.Tags)
 	// Always set, including with empty map, so out-of-band CF clears propagate
 	// back into Terraform state as drift on the next plan.
-	d.Set(customFieldsKey, getCustomFields(ipAddress.CustomFields))
+	d.Set(customFieldsKey, readCustomFields(ipAddress.CustomFields))
 	return nil
 }
 
