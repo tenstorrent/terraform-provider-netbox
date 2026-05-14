@@ -82,6 +82,18 @@ func resourceNetboxIPRangeCreate(d *schema.ResourceData, m interface{}) error {
 	data.Status = status
 	data.Description = description
 
+	if tenantID, ok := d.GetOk("tenant_id"); ok {
+		data.Tenant = int64ToPtr(int64(tenantID.(int)))
+	}
+
+	if vrfID, ok := d.GetOk("vrf_id"); ok {
+		data.Vrf = int64ToPtr(int64(vrfID.(int)))
+	}
+
+	if roleID, ok := d.GetOk("role_id"); ok {
+		data.Role = int64ToPtr(int64(roleID.(int)))
+	}
+
 	var err error
 	data.Tags, err = getNestedTagListFromResourceDataSet(api, d.Get(tagsAllKey))
 	if err != nil {
@@ -151,7 +163,7 @@ func resourceNetboxIPRangeRead(d *schema.ResourceData, m interface{}) error {
 	api.readTags(d, res.GetPayload().Tags)
 	// Always set, including with empty map, so out-of-band CF clears propagate
 	// back into Terraform state as drift on the next plan.
-	d.Set(customFieldsKey, getCustomFields(res.GetPayload().CustomFields))
+	d.Set(customFieldsKey, readCustomFields(res.GetPayload().CustomFields))
 
 	return nil
 }

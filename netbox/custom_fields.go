@@ -22,6 +22,25 @@ var customFieldsSchema = &schema.Schema{
 	},
 }
 
+// coerceJSONStringValue checks if a value is a JSON string produced by
+// jsonencode() in HCL representing an object or array. If so it unmarshals it
+// to a native Go type so the API client serialises it as a proper JSON object
+// rather than a quoted string. Plain scalar strings are returned unchanged.
+func coerceJSONStringValue(value interface{}) interface{} {
+	s, isStr := value.(string)
+	if !isStr {
+		return value
+	}
+	var parsed interface{}
+	if err := json.Unmarshal([]byte(s), &parsed); err == nil {
+		switch parsed.(type) {
+		case map[string]interface{}, []interface{}:
+			return parsed
+		}
+	}
+	return value
+}
+
 func getCustomFields(cf interface{}) map[string]interface{} {
 	cfm, ok := cf.(map[string]interface{})
 	if !ok || len(cfm) == 0 {
@@ -52,6 +71,44 @@ func getCustomFields(cf interface{}) map[string]interface{} {
 	return result
 }
 
+// writeCustomFields prepares a custom fields map for API Create calls.
+// Both nil and "" are treated as "not set" and are dropped, matching the
+// behaviour of readCustomFields on the Read path. This ensures that a config
+// containing nil or "" values converges without perpetual diffs.
+// Note: "" cannot be used to set a text CF to an empty string — it is
+// indistinguishable from "unset" in both directions. To clear a CF that was
+// previously set, remove the key from HCL; customFieldsForUpdate will then
+// send an explicit null in the PATCH payload.
+// JSON strings produced by jsonencode() are coerced to native Go types so the
+// API client serialises them as proper JSON objects/arrays rather than quoted
+// strings. Only used on write paths — never on Read.
+//
+// Known limitation: coercion is based on whether the string parses as a JSON
+// object/array, not on the CF's actual type. A plain-text CF whose value
+// happens to look like JSON (e.g. '{"key":"val"}') will be coerced. This is
+// unlikely in practice but users should avoid storing raw JSON strings in
+// non-JSON-typed CFs when managed by Terraform.
+func writeCustomFields(cf interface{}) map[string]interface{} {
+	cfm, ok := cf.(map[string]interface{})
+	if !ok || len(cfm) == 0 {
+		return nil
+	}
+	result := make(map[string]interface{}, len(cfm))
+	for k, v := range cfm {
+		if v == nil {
+			continue
+		}
+		if s, isStr := v.(string); isStr && s == "" {
+			continue
+		}
+		result[k] = coerceJSONStringValue(v)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
 // customFieldsForUpdate returns the value to assign to the CustomFields field
 // of a writable model in an Update path.
 //
@@ -66,6 +123,11 @@ func getCustomFields(cf interface{}) map[string]interface{} {
 //   - sets every key still present in the user's config to its new value
 //   - explicitly nulls every key that used to be in state but is gone from config,
 //     so NetBox actually clears them
+//
+// Empty-string values in newMap are treated as "not set" (same as Create and
+// Read paths) and leave the nil pre-populated by the oldMap loop in place,
+// which causes NetBox to clear the field — consistent with the "remove the key
+// to clear it" contract documented on writeCustomFields.
 //
 // When neither old state nor new config has any custom fields, it returns nil
 // so omitempty correctly omits the field entirely.
@@ -83,7 +145,34 @@ func customFieldsForUpdate(d *schema.ResourceData) interface{} {
 		result[k] = nil
 	}
 	for k, v := range newMap {
-		result[k] = v
+		if v == nil {
+			continue
+		}
+		if s, isStr := v.(string); isStr && s == "" {
+			continue // leave nil from oldMap loop → NetBox clears the field
+		}
+		result[k] = coerceJSONStringValue(v)
+	}
+	return result
+}
+
+// readCustomFields is used in resource Read paths. It builds on
+// flattenCustomFields (which stringifies all values) and then removes any keys
+// that NetBox returned as "unset" (nil → "" by flattenCustomFields). This
+// prevents ghost keys for CFs that are registered on the content-type but not
+// set on this specific object from polluting Terraform state.
+func readCustomFields(cf interface{}) map[string]interface{} {
+	result := flattenCustomFields(cf)
+	if result == nil {
+		return nil
+	}
+	for k, v := range result {
+		if s, ok := v.(string); ok && s == "" {
+			delete(result, k)
+		}
+	}
+	if len(result) == 0 {
+		return nil
 	}
 	return result
 }

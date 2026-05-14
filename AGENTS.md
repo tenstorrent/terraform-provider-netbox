@@ -146,6 +146,31 @@ When adding a new delta, copy this template:
 - **Related go-netbox change:** None
 - **Status:** Active
 
+#### `ip-range-create-tenant` — include `tenant_id`/`vrf_id`/`role_id` in initial `netbox_ip_range` Create request
+
+- **Type:** Bug fix
+- **Introduced:** 2026-05 (`v5.3.7`)
+- **Files:** `netbox/resource_netbox_ip_range.go`
+- **Tests:** `TestAccNetboxIpRange_with_dependencies` (exercises `tenant_id`, `vrf_id`, `role_id` on Create)
+- **Why:** The `Create` function built the initial API POST without `Tenant`, `Vrf`, or `Role`, intending to set them in the subsequent `Update` call. NetBox rejects the POST with a 400 if a site policy requires a tenant (`"Tenant is required"`), so the resource could never be created in those environments.
+- **What:** Sets `data.Tenant`, `data.Vrf`, and `data.Role` directly in the `Create` function before the API call, mirroring the pattern already used in the `Update` path.
+- **Upstream candidate:** Yes — same pattern likely affects other resources. Currently parked per user direction.
+- **Related go-netbox change:** None
+- **Status:** Active
+
+#### `cf-json-coercion` — JSON string coercion in write paths + unified Read helper
+
+- **Type:** Bug fix
+- **Introduced:** 2026-05 (`v5.3.7`)
+- **Files:** `netbox/custom_fields.go`, `netbox/resource_netbox_device_type.go`, `netbox/resource_netbox_ip_range.go`, `netbox/resource_netbox_available_ip_address.go`, `netbox/resource_netbox_ip_address.go`
+- **Tests:** `TestCoerceJSONStringValue`, `TestWriteCustomFields`, `TestReadCustomFields` (unit tests in `custom_fields_test.go`); `TestAccNetboxDeviceType_extendedFields` exercises `jsonencode()` end-to-end but does not assert the JSON CF value in state (pre-existing gap, requires live NetBox)
+- **Why:** JSON-typed custom fields (e.g. `device_specs`, `system_specs`) were being stored in NetBox as literal JSON strings instead of JSON objects. The provider's `custom_fields` schema is `map(string)`, so HCL authors use `jsonencode({...})` to produce a JSON string. The Create/Update path was sending that string as-is to the NetBox API, which double-encoded it — NetBox stored `"{\"key\":\"val\"}"` (a string) instead of `{"key":"val"}` (an object).
+- **What:** Introduces `coerceJSONStringValue` helper and a new `writeCustomFields()` function in `custom_fields.go`. When a custom field value is a string that parses as a JSON object or array, `coerceJSONStringValue` unmarshals it to a native Go type before sending to the API. `writeCustomFields` is used in Create paths; `customFieldsForUpdate` (Update path) also applies coercion. `getCustomFields` is kept as a pure filter/nil-stripper with no coercion so it stays safe for Read paths that don't see JSON-typed CFs. `readCustomFields` is refactored to build on `flattenCustomFields` (eliminating duplication) and then strips empty-string keys; it stringifies any complex value (map/array) returned by NetBox back into a JSON string for the `map(string)` schema. Read paths for every resource whose Update goes through `customFieldsForUpdate` — `netbox_device_type`, `netbox_ip_range`, `netbox_available_ip_address`, `netbox_ip_address` — are migrated to `readCustomFields` so JSON objects from the API round-trip correctly to `jsonencode()`-shaped strings in state.
+- **Scope note:** `writeCustomFields` (Create-path coercion) is currently only wired into `netbox_device_type` Create. ~30 other resources assign `data.CustomFields` directly from `d.GetOk()` without going through any helper — they have the same double-encoding bug on Create but are out of scope for this patch. Their Read paths still use `getCustomFields`, which matches their Create behaviour (consistent bug, no type-mismatch error). Follow-up work needed to apply `writeCustomFields` broadly and migrate their Reads to `readCustomFields` in lockstep.
+- **Upstream candidate:** Yes — same double-encoding bug affects any resource that exposes JSON-typed CFs. Currently parked per user direction.
+- **Related go-netbox change:** None
+- **Status:** Active
+
 If the customer asks about more features, they land here too. New patches should land as discrete commits with descriptive messages so the next rebase is bearable, and they should add a block above with `Status: Active`.
 
 ## Repo layout reminders
@@ -352,12 +377,12 @@ If/when upstreaming resumes: branch any upstream PR off `upstream/master` direct
 
 ## Quick reference: state at last rebase
 
-Last rebase: **Apr 2026** (carried forward into `v5.3.4`, no new upstream rebase since `v5.3.3`).
+Last rebase: **Apr 2026** (carried forward into `v5.3.4`, no new upstream rebase since `v5.3.3`). Patch releases `v5.3.5`, `v5.3.6`, `v5.3.7` added in May 2026 (no upstream rebase).
 
 - Provider's `master` is upstream master at `8257f4d` ("test: add acceptance test for dns_name case drift") — upstream's tip 4 commits past tag `v5.3.0` — plus the carried tenstorrent patches.
 - go-netbox `master` carries three commits on top of upstream `53bc6c52`: the `Tenant` field on `WritableAvailableIP` (`ad4a0111`), the `device_type_id` / `module_type_id` query-param fix on the dcim templates list endpoints (`af097a32`), and the `default_platform` + `exclude_from_utilization` fields on `WritableDeviceType` / `DeviceType` (`cc70b0e9`). Tagged `v0.5.0`. The provider's `go.mod` `replace` line points to `v0.5.0`. The previously-separate `tenant-fix` branch was retired; `master` is now the canonical branch.
-- Tagged releases on the provider: `v5.3.0-tenstorrent.0` and `v5.3.0-tenstorrent-rc1` (legacy scheme, kept on origin), then `v5.3.1`, `v5.3.2`, `v5.3.3`, `v5.3.4` (current scheme). `v5.3.4` is the "extended device_type fields + go-netbox v0.5.0" release.
-- Carried deltas active at `v5.3.4`: `release-workflow-permissions`, `available-ip-tenant`, `service-43-parent`, `cf-null-clearing`, `device-type-nested-templates`, `dcim-templates-list-filter-param` (in go-netbox `v0.4.0`+), `device-type-templates-examples`, `device-type-extended-fields`. See "The patches we carry" above for details.
+- Tagged releases on the provider: `v5.3.0-tenstorrent.0` and `v5.3.0-tenstorrent-rc1` (legacy scheme, kept on origin), then `v5.3.1`, `v5.3.2`, `v5.3.3`, `v5.3.4`, `v5.3.5`, `v5.3.6`, `v5.3.7` (current scheme). `v5.3.5` introduced `shuffle_mode` on `netbox_available_ip_address`; `v5.3.6` made `shuffle_mode` non-replacing on update; `v5.3.7` is the "ip_range tenant on Create + JSON CF coercion" release.
+- Carried deltas active at `v5.3.7`: `release-workflow-permissions`, `available-ip-tenant`, `service-43-parent`, `cf-null-clearing`, `device-type-nested-templates`, `dcim-templates-list-filter-param` (in go-netbox `v0.4.0`+), `device-type-templates-examples`, `device-type-extended-fields`, `available-ip-shuffle-mode`, `ip-range-create-tenant`, `cf-json-coercion`. See "The patches we carry" above for details.
 - Conflicts encountered during the original Apr 2026 rebase: `go.sum` (every cherry-pick — resolved with `--ours` then `go mod tidy`), and one cherry-pick artifact in `netbox/resource_netbox_available_ip_address_test.go` (stray closing braces, caught by `go vet`).
 
 Tag scheme going forward: plain `vX.Y.Z` semver, monotonically increasing from our own release history. Don't try to anchor patch numbers to upstream's version — keep ours self-contained so downstream `~> 5` constraints resolve cleanly. The `-tenstorrent.<n>` prerelease scheme used in `v5.3.0-tenstorrent.0` was retired because it sorts below `v5.3.0` per SemVer prerelease rules, which is the opposite of what we want.
