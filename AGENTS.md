@@ -171,6 +171,18 @@ When adding a new delta, copy this template:
 - **Related go-netbox change:** None
 - **Status:** Active
 
+#### `contact-group-contact-role-contact-custom-field-enhancements` — full field coverage for contact_group, contact_role, contact, and custom_field
+
+- **Type:** Feature
+- **Introduced:** 2026-06 (`v5.3.8`)
+- **Files:** `netbox/resource_netbox_contact_group.go`, `netbox/resource_netbox_contact_role.go`, `netbox/resource_netbox_contact.go`, `netbox/resource_netbox_custom_field.go`
+- **Tests:** N/A
+- **Why:** `netbox_contact_group` had no `custom_fields` or `tags` support. `netbox_contact_role` had no `description` or `tags`. `netbox_contact` was missing `title`, `address`, `comments`, and `custom_fields`. `netbox_custom_field` had no `ui_visible` support. All fields exist in the NetBox API and in the go-netbox models but were never wired into the provider.
+- **What:** Adds the missing schema fields and plumbs them through Create/Read/Update for all four resources. `ui_visible` required a companion fix in go-netbox (see related change) where the JSON tag on `WritableCustomField.UIVisibility` was wrong (`ui_visibility` → `ui_visible`) causing the value to be silently dropped by the API on write.
+- **Upstream candidate:** Yes — clean candidates for all four resources. Currently parked per user direction.
+- **Related go-netbox change:** Commit "fix: correct ui_visible JSON tag on WritableCustomField" on `msollanych-tt/go-netbox` master (tagged `v0.5.1`).
+- **Status:** Active
+
 If the customer asks about more features, they land here too. New patches should land as discrete commits with descriptive messages so the next rebase is bearable, and they should add a block above with `Status: Active`.
 
 ## Repo layout reminders
@@ -380,9 +392,9 @@ If/when upstreaming resumes: branch any upstream PR off `upstream/master` direct
 Last rebase: **Apr 2026** (carried forward into `v5.3.4`, no new upstream rebase since `v5.3.3`). Patch releases `v5.3.5`, `v5.3.6`, `v5.3.7` added in May 2026 (no upstream rebase).
 
 - Provider's `master` is upstream master at `8257f4d` ("test: add acceptance test for dns_name case drift") — upstream's tip 4 commits past tag `v5.3.0` — plus the carried tenstorrent patches.
-- go-netbox `master` carries three commits on top of upstream `53bc6c52`: the `Tenant` field on `WritableAvailableIP` (`ad4a0111`), the `device_type_id` / `module_type_id` query-param fix on the dcim templates list endpoints (`af097a32`), and the `default_platform` + `exclude_from_utilization` fields on `WritableDeviceType` / `DeviceType` (`cc70b0e9`). Tagged `v0.5.0`. The provider's `go.mod` `replace` line points to `v0.5.0`. The previously-separate `tenant-fix` branch was retired; `master` is now the canonical branch.
+- go-netbox `master` carries four commits on top of upstream `53bc6c52`: the `Tenant` field on `WritableAvailableIP` (`ad4a0111`), the `device_type_id` / `module_type_id` query-param fix on the dcim templates list endpoints (`af097a32`), the `default_platform` + `exclude_from_utilization` fields on `WritableDeviceType` / `DeviceType` (`cc70b0e9`), and the `ui_visible` JSON tag fix on `WritableCustomField`. Tagged `v0.5.1`. The provider's `go.mod` `replace` line points to `v0.5.1`.
 - Tagged releases on the provider: `v5.3.0-tenstorrent.0` and `v5.3.0-tenstorrent-rc1` (legacy scheme, kept on origin), then `v5.3.1`, `v5.3.2`, `v5.3.3`, `v5.3.4`, `v5.3.5`, `v5.3.6`, `v5.3.7` (current scheme). `v5.3.5` introduced `shuffle_mode` on `netbox_available_ip_address`; `v5.3.6` made `shuffle_mode` non-replacing on update; `v5.3.7` is the "ip_range tenant on Create + JSON CF coercion" release.
-- Carried deltas active at `v5.3.7`: `release-workflow-permissions`, `available-ip-tenant`, `service-43-parent`, `cf-null-clearing`, `device-type-nested-templates`, `dcim-templates-list-filter-param` (in go-netbox `v0.4.0`+), `device-type-templates-examples`, `device-type-extended-fields`, `available-ip-shuffle-mode`, `ip-range-create-tenant`, `cf-json-coercion`. See "The patches we carry" above for details.
+- Carried deltas active at `v5.3.8`: `release-workflow-permissions`, `available-ip-tenant`, `service-43-parent`, `cf-null-clearing`, `device-type-nested-templates`, `dcim-templates-list-filter-param` (in go-netbox `v0.4.0`+), `device-type-templates-examples`, `device-type-extended-fields`, `available-ip-shuffle-mode`, `ip-range-create-tenant`, `cf-json-coercion`, `contact-group-contact-role-contact-custom-field-enhancements` (depends on go-netbox `v0.5.1`). See "The patches we carry" above for details.
 - Conflicts encountered during the original Apr 2026 rebase: `go.sum` (every cherry-pick — resolved with `--ours` then `go mod tidy`), and one cherry-pick artifact in `netbox/resource_netbox_available_ip_address_test.go` (stray closing braces, caught by `go vet`).
 
 Tag scheme going forward: plain `vX.Y.Z` semver, monotonically increasing from our own release history. Don't try to anchor patch numbers to upstream's version — keep ours self-contained so downstream `~> 5` constraints resolve cleanly. The `-tenstorrent.<n>` prerelease scheme used in `v5.3.0-tenstorrent.0` was retired because it sorts below `v5.3.0` per SemVer prerelease rules, which is the opposite of what we want.

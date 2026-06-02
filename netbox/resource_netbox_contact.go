@@ -32,11 +32,19 @@ func resourceNetboxContact() *schema.Resource {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
+			"title": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
 			"email": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
 			"phone": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
+			"address": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
@@ -48,6 +56,11 @@ func resourceNetboxContact() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
+			"comments": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
+			customFieldsKey: customFieldsSchema,
 		},
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
@@ -59,10 +72,13 @@ func resourceNetboxContactCreate(d *schema.ResourceData, m interface{}) error {
 	api := m.(*providerState)
 
 	name := d.Get("name").(string)
+	title := d.Get("title").(string)
 	phone := d.Get("phone").(string)
 	email := d.Get("email").(string)
+	address := d.Get("address").(string)
 	link := d.Get("link").(string)
 	description := d.Get("description").(string)
+	comments := d.Get("comments").(string)
 	groupID := int64(d.Get("group_id").(int))
 
 	tags, _ := getNestedTagListFromResourceDataSet(api, d.Get(tagsAllKey))
@@ -70,11 +86,15 @@ func resourceNetboxContactCreate(d *schema.ResourceData, m interface{}) error {
 	data := &models.WritableContact{}
 
 	data.Name = &name
+	data.Title = title
 	data.Tags = tags
 	data.Phone = phone
 	data.Email = strfmt.Email(email)
+	data.Address = address
 	data.Link = strfmt.URI(link)
 	data.Description = description
+	data.Comments = comments
+	data.CustomFields = writeCustomFields(d.Get(customFieldsKey))
 	if groupID != 0 {
 		data.Group = &groupID
 	}
@@ -110,13 +130,18 @@ func resourceNetboxContactRead(d *schema.ResourceData, m interface{}) error {
 	}
 
 	d.Set("name", res.GetPayload().Name)
+	d.Set("title", res.GetPayload().Title)
 	d.Set("phone", res.GetPayload().Phone)
 	d.Set("email", res.GetPayload().Email)
+	d.Set("address", res.GetPayload().Address)
 	d.Set("link", res.GetPayload().Link)
 	d.Set("description", res.GetPayload().Description)
+	d.Set("comments", res.GetPayload().Comments)
 	if res.GetPayload().Group != nil {
 		d.Set("group_id", res.GetPayload().Group.ID)
 	}
+	d.Set(tagsKey, getTagListFromNestedTagList(res.GetPayload().Tags))
+	d.Set(customFieldsKey, readCustomFields(res.GetPayload().CustomFields))
 
 	return nil
 }
@@ -128,20 +153,27 @@ func resourceNetboxContactUpdate(d *schema.ResourceData, m interface{}) error {
 	data := models.WritableContact{}
 
 	name := d.Get("name").(string)
+	title := d.Get("title").(string)
 	phone := d.Get("phone").(string)
 	email := d.Get("email").(string)
+	address := d.Get("address").(string)
 	link := d.Get("link").(string)
 	description := d.Get("description").(string)
+	comments := d.Get("comments").(string)
 	groupID := int64(d.Get("group_id").(int))
 
 	tags, _ := getNestedTagListFromResourceDataSet(api, d.Get(tagsAllKey))
 
 	data.Name = &name
+	data.Title = title
 	data.Tags = tags
 	data.Phone = phone
 	data.Email = strfmt.Email(email)
+	data.Address = address
 	data.Link = strfmt.URI(link)
 	data.Description = description
+	data.Comments = comments
+	data.CustomFields = customFieldsForUpdate(d)
 	if groupID != 0 {
 		data.Group = &groupID
 	}

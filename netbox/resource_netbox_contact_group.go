@@ -39,6 +39,8 @@ func resourceNetboxContactGroup() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
+			tagsKey:         tagsSchema,
+			customFieldsKey: customFieldsSchema,
 		},
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
@@ -62,11 +64,14 @@ func resourceNetboxContactGroupCreate(d *schema.ResourceData, m interface{}) err
 		slug = slugValue.(string)
 	}
 
+	tags, _ := getNestedTagListFromResourceDataSet(api, d.Get(tagsAllKey))
+
 	data := &models.WritableContactGroup{}
 	data.Name = &name
 	data.Slug = &slug
 	data.Description = description
-	data.Tags = []*models.NestedTag{}
+	data.Tags = tags
+	data.CustomFields = writeCustomFields(d.Get(customFieldsKey))
 
 	if parentID != 0 {
 		data.Parent = &parentID
@@ -109,6 +114,8 @@ func resourceNetboxContactGroupRead(d *schema.ResourceData, m interface{}) error
 	if res.GetPayload().Parent != nil {
 		d.Set("parent", res.GetPayload().Parent.ID)
 	}
+	d.Set(tagsKey, getTagListFromNestedTagList(res.GetPayload().Tags))
+	d.Set(customFieldsKey, readCustomFields(res.GetPayload().CustomFields))
 	return nil
 }
 
@@ -131,10 +138,13 @@ func resourceNetboxContactGroupUpdate(d *schema.ResourceData, m interface{}) err
 		slug = slugValue.(string)
 	}
 
+	tags, _ := getNestedTagListFromResourceDataSet(api, d.Get(tagsAllKey))
+
 	data.Slug = &slug
 	data.Name = &name
 	data.Description = description
-	data.Tags = []*models.NestedTag{}
+	data.Tags = tags
+	data.CustomFields = customFieldsForUpdate(d)
 
 	if parentID != 0 {
 		data.Parent = &parentID
