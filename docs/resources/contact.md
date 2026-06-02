@@ -35,12 +35,16 @@ resource "netbox_contact" "test" {
 
 ### Optional
 
+- `address` (String)
+- `comments` (String)
+- `custom_fields` (Map of String)
 - `description` (String)
 - `email` (String)
 - `group_id` (Number)
 - `link` (String)
 - `phone` (String)
 - `tags` (Set of String)
+- `title` (String)
 
 ### Read-Only
 
