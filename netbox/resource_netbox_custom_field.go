@@ -88,23 +88,23 @@ func resourceCustomField() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-		"choice_set_id": {
-			Type:     schema.TypeInt,
-			Optional: true,
+			"choice_set_id": {
+				Type:     schema.TypeInt,
+				Optional: true,
+			},
+			"ui_visible": {
+				Type:     schema.TypeString,
+				Optional: true,
+				ValidateFunc: validation.StringInSlice([]string{
+					"read-write",
+					"read-only",
+					"hidden",
+				}, false),
+			},
 		},
-		"ui_visible": {
-			Type:     schema.TypeString,
-			Optional: true,
-			ValidateFunc: validation.StringInSlice([]string{
-				"read-write",
-				"read-only",
-				"hidden",
-			}, false),
+		Importer: &schema.ResourceImporter{
+			StateContext: schema.ImportStatePassthroughContext,
 		},
-	},
-	Importer: &schema.ResourceImporter{
-		StateContext: schema.ImportStatePassthroughContext,
-	},
 	}
 }
 
@@ -261,6 +261,8 @@ func resourceNetboxCustomFieldRead(d *schema.ResourceData, m interface{}) error 
 
 	if customField.UIVisibility != nil && customField.UIVisibility.Value != nil {
 		d.Set("ui_visible", *customField.UIVisibility.Value)
+	} else {
+		d.Set("ui_visible", "")
 	}
 
 	return nil
