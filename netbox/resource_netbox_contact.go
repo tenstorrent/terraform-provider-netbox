@@ -94,7 +94,9 @@ func resourceNetboxContactCreate(d *schema.ResourceData, m interface{}) error {
 	data.Link = strfmt.URI(link)
 	data.Description = description
 	data.Comments = comments
-	data.CustomFields = writeCustomFields(d.Get(customFieldsKey))
+	if cf, ok := d.GetOk(customFieldsKey); ok {
+		data.CustomFields = writeCustomFields(cf)
+	}
 	if groupID != 0 {
 		data.Group = &groupID
 	}

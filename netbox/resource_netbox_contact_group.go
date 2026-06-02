@@ -71,7 +71,9 @@ func resourceNetboxContactGroupCreate(d *schema.ResourceData, m interface{}) err
 	data.Slug = &slug
 	data.Description = description
 	data.Tags = tags
-	data.CustomFields = writeCustomFields(d.Get(customFieldsKey))
+	if cf, ok := d.GetOk(customFieldsKey); ok {
+		data.CustomFields = writeCustomFields(cf)
+	}
 
 	if parentID != 0 {
 		data.Parent = &parentID
