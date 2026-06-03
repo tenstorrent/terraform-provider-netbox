@@ -30,12 +30,15 @@ resource "netbox_contact_group" "test" {
 
 ### Optional
 
+- `custom_fields` (Map of String)
 - `description` (String)
 - `parent_id` (Number)
 - `slug` (String)
+- `tags` (Set of String)
 
 ### Read-Only
 
 - `id` (String) The ID of this resource.
+- `tags_all` (Set of String)
 
 

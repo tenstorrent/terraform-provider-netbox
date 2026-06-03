@@ -31,6 +31,11 @@ func resourceNetboxContactRole() *schema.Resource {
 				Computed:     true,
 				ValidateFunc: validation.StringLenBetween(1, 100),
 			},
+			"description": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
+			tagsKey: tagsSchema,
 		},
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
@@ -42,6 +47,7 @@ func resourceNetboxContactRoleCreate(d *schema.ResourceData, m interface{}) erro
 	api := m.(*providerState)
 
 	name := d.Get("name").(string)
+	description := d.Get("description").(string)
 
 	data := &models.ContactRole{}
 
@@ -53,8 +59,11 @@ func resourceNetboxContactRoleCreate(d *schema.ResourceData, m interface{}) erro
 		data.Slug = strToPtr(slugValue.(string))
 	}
 
+	tags, _ := getNestedTagListFromResourceDataSet(api, d.Get(tagsAllKey))
+
 	data.Name = &name
-	data.Tags = []*models.NestedTag{}
+	data.Description = description
+	data.Tags = tags
 
 	params := tenancy.NewTenancyContactRolesCreateParams().WithData(data)
 
@@ -90,6 +99,8 @@ func resourceNetboxContactRoleRead(d *schema.ResourceData, m interface{}) error 
 	contactrole := res.GetPayload()
 	d.Set("name", contactrole.Name)
 	d.Set("slug", contactrole.Slug)
+	d.Set("description", contactrole.Description)
+	d.Set(tagsKey, getTagListFromNestedTagList(contactrole.Tags))
 
 	return nil
 }
@@ -101,6 +112,7 @@ func resourceNetboxContactRoleUpdate(d *schema.ResourceData, m interface{}) erro
 	data := models.ContactRole{}
 
 	name := d.Get("name").(string)
+	description := d.Get("description").(string)
 	slugValue, slugOk := d.GetOk("slug")
 	// Default slug to generated slug if not given
 	if !slugOk {
@@ -109,8 +121,11 @@ func resourceNetboxContactRoleUpdate(d *schema.ResourceData, m interface{}) erro
 		data.Slug = strToPtr(slugValue.(string))
 	}
 
+	tags, _ := getNestedTagListFromResourceDataSet(api, d.Get(tagsAllKey))
+
 	data.Name = &name
-	data.Tags = []*models.NestedTag{}
+	data.Description = description
+	data.Tags = tags
 
 	params := tenancy.NewTenancyContactRolesPartialUpdateParams().WithID(id).WithData(&data)
 

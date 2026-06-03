@@ -92,6 +92,15 @@ func resourceCustomField() *schema.Resource {
 				Type:     schema.TypeInt,
 				Optional: true,
 			},
+			"ui_visible": {
+				Type:     schema.TypeString,
+				Optional: true,
+				ValidateFunc: validation.StringInSlice([]string{
+					"read-write",
+					"read-only",
+					"hidden",
+				}, false),
+			},
 		},
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
@@ -139,6 +148,8 @@ func resourceNetboxCustomFieldUpdate(d *schema.ResourceData, m interface{}) erro
 	if ok {
 		data.ValidationMinimum = int64ToPtr(int64(vmin.(int)))
 	}
+
+	data.UIVisibility = d.Get("ui_visible").(string)
 
 	params := extras.NewExtrasCustomFieldsUpdateParams().WithID(id).WithData(data)
 	res, err := api.Extras.ExtrasCustomFieldsUpdate(params, nil)
@@ -189,6 +200,8 @@ func resourceNetboxCustomFieldCreate(d *schema.ResourceData, m interface{}) erro
 	if ok {
 		data.ValidationMinimum = int64ToPtr(int64(vmin.(int)))
 	}
+
+	data.UIVisibility = d.Get("ui_visible").(string)
 
 	params := extras.NewExtrasCustomFieldsCreateParams().WithData(data)
 
@@ -245,6 +258,12 @@ func resourceNetboxCustomFieldRead(d *schema.ResourceData, m interface{}) error 
 	d.Set("validation_maximum", customField.ValidationMaximum)
 	d.Set("validation_minimum", customField.ValidationMinimum)
 	d.Set("validation_regex", customField.ValidationRegex)
+
+	if customField.UIVisibility != nil && customField.UIVisibility.Value != nil {
+		d.Set("ui_visible", *customField.UIVisibility.Value)
+	} else {
+		d.Set("ui_visible", "")
+	}
 
 	return nil
 }
