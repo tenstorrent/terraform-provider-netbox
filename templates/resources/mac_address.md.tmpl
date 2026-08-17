@@ -27,6 +27,12 @@ With `device_interface_id`:
 With `object_type` and `interface_id`:
 {{ tffile "examples/resources/netbox_mac_address/object_type_device.tf" }}
 
+### Promoting a MAC address to primary on its interface
+
+Setting `primary = true` will PATCH the assigned interface to set this MAC as the primary MAC address (NetBox 4.2+):
+
+{{ tffile "examples/resources/netbox_mac_address/primary.tf" }}
+
 ### Creating a MAC address that is not assigned to anything
 
 You can create a MAC address that is not assigned to anything by omitting the attributes mentioned above.
