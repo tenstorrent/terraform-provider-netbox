@@ -45,14 +45,14 @@ func resourceNetboxInterface() *schema.Resource {
 				Optional: true,
 				Default:  true,
 			},
-		"mac_address": {
-			Type:         schema.TypeString,
-			Optional:     true,
-			Computed:     true,
-			ValidateFunc: validation.IsMACAddress,
-			DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-				return strings.EqualFold(old, new)
-			},
+			"mac_address": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				Computed:     true,
+				ValidateFunc: validation.IsMACAddress,
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					return strings.EqualFold(old, new)
+				},
 			},
 			"mode": {
 				Type:         schema.TypeString,

@@ -253,15 +253,21 @@ func resourceNetboxMACAddressUpdate(d *schema.ResourceData, m interface{}) error
 		return err
 	}
 
-	if d.HasChange("primary") {
-		objectType, ifaceID := macAddressResolveInterface(d)
-		if objectType != "" && ifaceID != 0 {
+	oldObjType, oldIfaceID := macAddressResolveInterfaceOld(d)
+	newObjType, newIfaceID := macAddressResolveInterface(d)
+	interfaceChanged := oldObjType != newObjType || oldIfaceID != newIfaceID
+
+	if d.HasChange("primary") || (interfaceChanged && d.Get("primary").(bool)) {
+		if interfaceChanged && oldIfaceID != 0 {
+			_ = patchInterfacePrimaryMAC(api, oldObjType, oldIfaceID, nil)
+		}
+		if newObjType != "" && newIfaceID != 0 {
 			if d.Get("primary").(bool) {
-				if err := patchInterfacePrimaryMAC(api, objectType, ifaceID, &id); err != nil {
+				if err := patchInterfacePrimaryMAC(api, newObjType, newIfaceID, &id); err != nil {
 					return err
 				}
 			} else {
-				if err := patchInterfacePrimaryMAC(api, objectType, ifaceID, nil); err != nil {
+				if err := patchInterfacePrimaryMAC(api, newObjType, newIfaceID, nil); err != nil {
 					return err
 				}
 			}
@@ -310,6 +316,42 @@ func macAddressResolveInterface(d *schema.ResourceData) (objectType string, inte
 	if v, ok := d.GetOk("interface_id"); ok {
 		return d.Get("object_type").(string), int64(v.(int))
 	}
+	return "", 0
+}
+
+// macAddressResolveInterfaceOld returns the previous interface assignment
+// using d.GetChange, for detecting reassignment during Update.
+func macAddressResolveInterfaceOld(d *schema.ResourceData) (objectType string, interfaceID int64) {
+	if d.HasChange("virtual_machine_interface_id") {
+		old, _ := d.GetChange("virtual_machine_interface_id")
+		if v, ok := old.(int); ok && v != 0 {
+			return "virtualization.vminterface", int64(v)
+		}
+	} else if v, ok := d.GetOk("virtual_machine_interface_id"); ok {
+		return "virtualization.vminterface", int64(v.(int))
+	}
+
+	if d.HasChange("device_interface_id") {
+		old, _ := d.GetChange("device_interface_id")
+		if v, ok := old.(int); ok && v != 0 {
+			return "dcim.interface", int64(v)
+		}
+	} else if v, ok := d.GetOk("device_interface_id"); ok {
+		return "dcim.interface", int64(v.(int))
+	}
+
+	if d.HasChange("interface_id") {
+		old, _ := d.GetChange("interface_id")
+		oldType, _ := d.GetChange("object_type")
+		if v, ok := old.(int); ok && v != 0 {
+			if t, ok := oldType.(string); ok {
+				return t, int64(v)
+			}
+		}
+	} else if v, ok := d.GetOk("interface_id"); ok {
+		return d.Get("object_type").(string), int64(v.(int))
+	}
+
 	return "", 0
 }
 
