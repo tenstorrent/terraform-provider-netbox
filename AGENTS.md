@@ -183,6 +183,18 @@ When adding a new delta, copy this template:
 - **Related go-netbox change:** Commit "fix: correct ui_visible JSON tag on WritableCustomField" on `msollanych-tt/go-netbox` master (tagged `v0.5.1`).
 - **Status:** Active
 
+#### `primary-mac` — `primary` attribute on `netbox_mac_address` for interface promotion
+
+- **Type:** Feature
+- **Introduced:** 2026-08 (`v5.3.9`)
+- **Files:** `netbox/resource_netbox_mac_address.go`, `netbox/resource_netbox_mac_address_test.go`, `netbox/resource_netbox_interface.go`, `netbox/resource_netbox_interface_test.go`
+- **Tests:** `TestAccNetboxMACAddress_primaryVM`, `TestAccNetboxMACAddress_primaryDevice`, `TestAccNetboxInterface_macAddressExplicit`, `TestAccNetboxInterface_macAddressServerSideNoDrift`
+- **Why:** NetBox 4.2+ supports a `primary_mac_address` field on interfaces (both device and VM). The upstream provider has no way to set this, meaning allocated MAC addresses can't be promoted to primary via Terraform.
+- **What:** Adds an optional `primary` boolean attribute (default `false`) to `netbox_mac_address`. When `true`, Create PATCHes the assigned interface to set `primary_mac_address` to this MAC's ID. Read checks the interface's current `primary_mac_address` to keep state in sync. Update handles toggling, plus correctly clears the old interface and sets the new one when the MAC is reassigned to a different interface. Delete clears `primary_mac_address` before destroying the MAC. The PATCH includes the interface's existing tags to satisfy NetBox custom validation rules. Also marks `netbox_interface.mac_address` as `Computed: true` to prevent drift when NetBox populates `mac_address` server-side due to primary MAC promotion.
+- **Upstream candidate:** Yes — clean candidate, no go-netbox model changes needed for this specific attribute (uses body-override PATCH). The `Computed` change on `netbox_interface.mac_address` is also upstreamable. Currently parked per user direction.
+- **Related go-netbox change:** Commit "Add PrimaryMacAddress field to Interface and VMInterface models" on `msollanych-tt/go-netbox` master (tagged `v0.5.2`).
+- **Status:** Active
+
 If the customer asks about more features, they land here too. New patches should land as discrete commits with descriptive messages so the next rebase is bearable, and they should add a block above with `Status: Active`.
 
 ## Repo layout reminders
@@ -389,12 +401,12 @@ If/when upstreaming resumes: branch any upstream PR off `upstream/master` direct
 
 ## Quick reference: state at last rebase
 
-Last rebase: **Apr 2026** (carried forward into `v5.3.4`, no new upstream rebase since `v5.3.3`). Patch releases `v5.3.5`, `v5.3.6`, `v5.3.7` added in May 2026 (no upstream rebase).
+Last rebase: **Apr 2026** (carried forward into `v5.3.4`, no new upstream rebase since `v5.3.3`). Patch releases `v5.3.5`, `v5.3.6`, `v5.3.7` added in May 2026, `v5.3.8` in Jun 2026, `v5.3.9` in Aug 2026 (no upstream rebase).
 
 - Provider's `master` is upstream master at `8257f4d` ("test: add acceptance test for dns_name case drift") — upstream's tip 4 commits past tag `v5.3.0` — plus the carried tenstorrent patches.
-- go-netbox `master` carries four commits on top of upstream `53bc6c52`: the `Tenant` field on `WritableAvailableIP` (`ad4a0111`), the `device_type_id` / `module_type_id` query-param fix on the dcim templates list endpoints (`af097a32`), the `default_platform` + `exclude_from_utilization` fields on `WritableDeviceType` / `DeviceType` (`cc70b0e9`), and the `ui_visible` JSON tag fix on `WritableCustomField`. Tagged `v0.5.1`. The provider's `go.mod` `replace` line points to `v0.5.1`.
-- Tagged releases on the provider: `v5.3.0-tenstorrent.0` and `v5.3.0-tenstorrent-rc1` (legacy scheme, kept on origin), then `v5.3.1`, `v5.3.2`, `v5.3.3`, `v5.3.4`, `v5.3.5`, `v5.3.6`, `v5.3.7` (current scheme). `v5.3.5` introduced `shuffle_mode` on `netbox_available_ip_address`; `v5.3.6` made `shuffle_mode` non-replacing on update; `v5.3.7` is the "ip_range tenant on Create + JSON CF coercion" release.
-- Carried deltas active at `v5.3.8`: `release-workflow-permissions`, `available-ip-tenant`, `service-43-parent`, `cf-null-clearing`, `device-type-nested-templates`, `dcim-templates-list-filter-param` (in go-netbox `v0.4.0`+), `device-type-templates-examples`, `device-type-extended-fields`, `available-ip-shuffle-mode`, `ip-range-create-tenant`, `cf-json-coercion`, `contact-group-contact-role-contact-custom-field-enhancements` (depends on go-netbox `v0.5.1`). See "The patches we carry" above for details.
+- go-netbox `master` carries five commits on top of upstream `53bc6c52`: the `Tenant` field on `WritableAvailableIP` (`ad4a0111`), the `device_type_id` / `module_type_id` query-param fix on the dcim templates list endpoints (`af097a32`), the `default_platform` + `exclude_from_utilization` fields on `WritableDeviceType` / `DeviceType` (`cc70b0e9`), the `ui_visible` JSON tag fix on `WritableCustomField`, and the `PrimaryMacAddress` field on Interface/VMInterface models. Tagged `v0.5.2`. The provider's `go.mod` `replace` line points to `v0.5.2`.
+- Tagged releases on the provider: `v5.3.0-tenstorrent.0` and `v5.3.0-tenstorrent-rc1` (legacy scheme, kept on origin), then `v5.3.1`, `v5.3.2`, `v5.3.3`, `v5.3.4`, `v5.3.5`, `v5.3.6`, `v5.3.7`, `v5.3.8`, `v5.3.9` (current scheme). `v5.3.5` introduced `shuffle_mode` on `netbox_available_ip_address`; `v5.3.6` made `shuffle_mode` non-replacing on update; `v5.3.7` is the "ip_range tenant on Create + JSON CF coercion" release; `v5.3.8` is "contact/custom_field enhancements"; `v5.3.9` is "primary MAC on netbox_mac_address".
+- Carried deltas active at `v5.3.9`: `release-workflow-permissions`, `available-ip-tenant`, `service-43-parent`, `cf-null-clearing`, `device-type-nested-templates`, `dcim-templates-list-filter-param` (in go-netbox `v0.4.0`+), `device-type-templates-examples`, `device-type-extended-fields`, `available-ip-shuffle-mode`, `ip-range-create-tenant`, `cf-json-coercion`, `contact-group-contact-role-contact-custom-field-enhancements` (depends on go-netbox `v0.5.1`), `primary-mac` (depends on go-netbox `v0.5.2`). See "The patches we carry" above for details.
 - Conflicts encountered during the original Apr 2026 rebase: `go.sum` (every cherry-pick — resolved with `--ours` then `go mod tidy`), and one cherry-pick artifact in `netbox/resource_netbox_available_ip_address_test.go` (stray closing braces, caught by `go vet`).
 
 Tag scheme going forward: plain `vX.Y.Z` semver, monotonically increasing from our own release history. Don't try to anchor patch numbers to upstream's version — keep ours self-contained so downstream `~> 5` constraints resolve cleanly. The `-tenstorrent.<n>` prerelease scheme used in `v5.3.0-tenstorrent.0` was retired because it sorts below `v5.3.0` per SemVer prerelease rules, which is the opposite of what we want.
