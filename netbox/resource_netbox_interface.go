@@ -50,6 +50,7 @@ func resourceNetboxInterface() *schema.Resource {
 				Optional:     true,
 				Computed:     true,
 				ValidateFunc: validation.IsMACAddress,
+				Description:  "In NetBox 4.2+, this field is populated from the interface's primary MAC address. Use netbox_mac_address with primary = true for reliable MAC assignment.",
 				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
 					return strings.EqualFold(old, new)
 				},
@@ -169,7 +170,9 @@ func resourceNetboxInterfaceRead(ctx context.Context, d *schema.ResourceData, m 
 	d.Set("name", iface.Name)
 	d.Set("description", iface.Description)
 	d.Set("enabled", iface.Enabled)
-	d.Set("mac_address", iface.MacAddress)
+	if iface.MacAddress != nil && *iface.MacAddress != "" {
+		d.Set("mac_address", iface.MacAddress)
+	}
 	d.Set("mtu", iface.Mtu)
 	api.readTags(d, iface.Tags)
 	d.Set("tagged_vlans", getIDsFromNestedVLAN(iface.TaggedVlans))

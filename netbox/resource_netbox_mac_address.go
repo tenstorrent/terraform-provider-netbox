@@ -266,7 +266,11 @@ func resourceNetboxMACAddressUpdate(d *schema.ResourceData, m interface{}) error
 				if err := patchInterfacePrimaryMAC(api, newObjType, newIfaceID, &id); err != nil {
 					return err
 				}
-			} else {
+			} else if !interfaceChanged {
+				// Only clear primary on the current interface when toggling primary off
+				// on the same interface. If the interface changed, the old interface was
+				// already cleared above; don't touch the new interface since this MAC
+				// was never primary there.
 				if err := patchInterfacePrimaryMAC(api, newObjType, newIfaceID, nil); err != nil {
 					return err
 				}

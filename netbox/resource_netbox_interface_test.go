@@ -274,6 +274,31 @@ func testAccCheckInterfaceDestroy(s *terraform.State) error {
 	return nil
 }
 
+func TestAccNetboxInterface_macAddressExplicitNoDrift(t *testing.T) {
+	testSlug := "iface_mac_explicit"
+	testName := testAccGetTestName(testSlug)
+	macAddress := "AA:BB:CC:DD:EE:01"
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckInterfaceDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccNetboxInterfaceFullDependencies(testName) + fmt.Sprintf(`
+resource "netbox_interface" "test" {
+  name               = "%s"
+  virtual_machine_id = netbox_virtual_machine.test.id
+  mac_address        = "%s"
+}`, testName, macAddress),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("netbox_interface.test", "name", testName),
+					resource.TestCheckResourceAttr("netbox_interface.test", "mac_address", macAddress),
+				),
+			},
+		},
+	})
+}
+
 func TestAccNetboxInterface_macAddressServerSideNoDrift(t *testing.T) {
 	testSlug := "iface_mac_nodrift"
 	testName := testAccGetTestName(testSlug)
