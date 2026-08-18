@@ -1,0 +1,29 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: "Virtualization"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+{{ tffile "examples/resources/netbox_interface/resource.tf" }}
+
+~> **Note:** In NetBox 4.2+, the `mac_address` attribute is populated from the interface's
+primary MAC address (set via `netbox_mac_address` with `primary = true`). Direct writes to
+`mac_address` on the interface may not be persisted by the NetBox API. Use `netbox_mac_address`
+for reliable MAC assignment.
+
+{{ .SchemaMarkdown | trimspace }}
+
+{{ if .HasImport -}}
+## Import
+
+Import is supported using the following syntax:
+
+{{ printf "{{codefile \"shell\" %q}}" .ImportFile }}
+{{- end }}
