@@ -78,6 +78,24 @@ resource "netbox_mac_address" "this" {
 }
 ```
 
+### Promoting a MAC address to primary on its interface
+
+Setting `primary = true` will PATCH the assigned interface to set this MAC as the primary MAC address (NetBox 4.2+):
+
+```terraform
+// Assuming a virtual machine with the id `123` exists
+resource "netbox_interface" "this" {
+  name               = "eth0"
+  virtual_machine_id = 123
+}
+
+resource "netbox_mac_address" "this" {
+  mac_address                  = "00:1A:2B:3C:4D:5E"
+  virtual_machine_interface_id = netbox_interface.this.id
+  primary                      = true
+}
+```
+
 ### Creating a MAC address that is not assigned to anything
 
 You can create a MAC address that is not assigned to anything by omitting the attributes mentioned above.
@@ -103,6 +121,7 @@ resource "netbox_mac_address" "this" {
 - `device_interface_id` (Number) Conflicts with `interface_id` and `virtual_machine_interface_id`.
 - `interface_id` (Number) Required when `object_type` is set.
 - `object_type` (String) Valid values are `virtualization.vminterface` and `dcim.interface`. Required when `interface_id` is set.
+- `primary` (Boolean) Promote this MAC address to the primary MAC on the assigned interface. Requires the MAC to be assigned to an interface (via virtual_machine_interface_id, device_interface_id, or interface_id + object_type). Defaults to `false`.
 - `tags` (Set of String)
 - `virtual_machine_interface_id` (Number) Conflicts with `interface_id` and `device_interface_id`.
 

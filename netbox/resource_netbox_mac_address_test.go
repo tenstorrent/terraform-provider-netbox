@@ -304,6 +304,76 @@ resource "netbox_mac_address" "test" {
 	})
 }
 
+func TestAccNetboxMACAddress_primaryVM(t *testing.T) {
+	testSlug := "mac-addr-prim-vm"
+	macAddress := "05:1A:2B:3C:4D:5E"
+	resource.ParallelTest(t, resource.TestCase{
+		Providers: testAccProviders,
+		PreCheck:  func() { testAccPreCheck(t) },
+		Steps: []resource.TestStep{
+			{
+				Config: testAccNetboxMACAddressFullVmDependencies(testSlug) + fmt.Sprintf(`
+resource "netbox_mac_address" "test" {
+  mac_address = "%s"
+  virtual_machine_interface_id = netbox_interface.test.id
+  primary = true
+}`, macAddress),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("netbox_mac_address.test", "mac_address", macAddress),
+					resource.TestCheckResourceAttr("netbox_mac_address.test", "primary", "true"),
+					resource.TestCheckResourceAttrPair("netbox_mac_address.test", "virtual_machine_interface_id", "netbox_interface.test", "id"),
+				),
+			},
+			{
+				Config: testAccNetboxMACAddressFullVmDependencies(testSlug) + fmt.Sprintf(`
+resource "netbox_mac_address" "test" {
+  mac_address = "%s"
+  virtual_machine_interface_id = netbox_interface.test.id
+  primary = false
+}`, macAddress),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("netbox_mac_address.test", "primary", "false"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccNetboxMACAddress_primaryDevice(t *testing.T) {
+	testSlug := "mac-addr-prim-dev"
+	macAddress := "06:1A:2B:3C:4D:5E"
+	resource.ParallelTest(t, resource.TestCase{
+		Providers: testAccProviders,
+		PreCheck:  func() { testAccPreCheck(t) },
+		Steps: []resource.TestStep{
+			{
+				Config: testAccNetboxMACAddressFullDeviceDependencies(testSlug) + fmt.Sprintf(`
+resource "netbox_mac_address" "test" {
+  mac_address = "%s"
+  device_interface_id = netbox_device_interface.test.id
+  primary = true
+}`, macAddress),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("netbox_mac_address.test", "mac_address", macAddress),
+					resource.TestCheckResourceAttr("netbox_mac_address.test", "primary", "true"),
+					resource.TestCheckResourceAttrPair("netbox_mac_address.test", "device_interface_id", "netbox_device_interface.test", "id"),
+				),
+			},
+			{
+				Config: testAccNetboxMACAddressFullDeviceDependencies(testSlug) + fmt.Sprintf(`
+resource "netbox_mac_address" "test" {
+  mac_address = "%s"
+  device_interface_id = netbox_device_interface.test.id
+  primary = false
+}`, macAddress),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("netbox_mac_address.test", "primary", "false"),
+				),
+			},
+		},
+	})
+}
+
 func init() {
 	resource.AddTestSweepers("netbox_mac_address", &resource.Sweeper{
 		Name:         "netbox_mac_address",
