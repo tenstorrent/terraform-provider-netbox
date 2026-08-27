@@ -207,6 +207,18 @@ When adding a new delta, copy this template:
 - **Related go-netbox change:** Tagged `v0.6.0` on `msollanych-tt/go-netbox` master.
 - **Status:** Active
 
+#### `cf-validation-float-json` — CustomField validation bounds from JSON floats
+
+- **Type:** Bug fix (in `msollanych-tt/go-netbox`)
+- **Introduced:** 2026-08 (`v5.3.10`, go-netbox `v0.6.1`)
+- **Files:** `netbox/models/custom_field_unmarshal.go` in `msollanych-tt/go-netbox`. Provider `go.mod` `replace` bump only.
+- **Tests:** `TestCustomFieldUnmarshal_validationBoundsAcceptFloatJSON`, `TestAccNetboxCustomField_integer`
+- **Why:** NetBox 4.4.1+ serializes `validation_minimum` / `validation_maximum` as JSON floats (`10.0`). go-netbox models those fields as `*int64`, and `encoding/json` refuses to unmarshal a number with a decimal point into that type. `TestAccNetboxCustomField_integer` (and any real `netbox_custom_field` with bounds) failed on every 4.4.1+ CI matrix entry; 4.3.x and 4.4.0 still emit integers so they stayed green. Pre-existing on master; surfaced on this PR because the matrix still runs those versions.
+- **What:** Adds a `CustomField.UnmarshalJSON` that reads the two bounds via `json.Number` and stores them as `*int64`, so both `10` and `10.0` work. Writable request bodies stay `*int64`. Provider schema stays `TypeInt`.
+- **Upstream candidate:** Yes — file against `fbreckle/go-netbox` / regenerate against current swagger (`number` not `integer`). Currently parked per user direction.
+- **Related go-netbox change:** This is the go-netbox change itself. Tagged `v0.6.1` on `msollanych-tt/go-netbox` master.
+- **Status:** Active
+
 If the customer asks about more features, they land here too. New patches should land as discrete commits with descriptive messages so the next rebase is bearable, and they should add a block above with `Status: Active`.
 
 ## Repo layout reminders
@@ -416,9 +428,9 @@ If/when upstreaming resumes: branch any upstream PR off `upstream/master` direct
 Last rebase: **Apr 2026** (carried forward into `v5.3.4`, no new upstream rebase since `v5.3.3`). Patch releases `v5.3.5`, `v5.3.6`, `v5.3.7` added in May 2026, `v5.3.8` in Jun 2026, `v5.3.9`/`v5.3.10` in Aug 2026 (no upstream rebase).
 
 - Provider's `master` is upstream master at `8257f4d` ("test: add acceptance test for dns_name case drift") — upstream's tip 4 commits past tag `v5.3.0` — plus the carried tenstorrent patches.
-- go-netbox `master` carries the v0.5.2 patches plus Webhook `Tags` / pointer `Secret` / pointer `SslVerification` (tagged `v0.6.0`). The provider's `go.mod` `replace` line points to `v0.6.0`.
+- go-netbox `master` carries the v0.5.2 patches plus Webhook `Tags` / pointer `Secret` / pointer `SslVerification` (`v0.6.0`) and CustomField validation-bound float JSON unmarshaling (`v0.6.1`). The provider's `go.mod` `replace` line points to `v0.6.1`.
 - Tagged releases on the provider: `v5.3.0-tenstorrent.0` and `v5.3.0-tenstorrent-rc1` (legacy scheme, kept on origin), then `v5.3.1` through `v5.3.10` (current scheme). `v5.3.10` is `tags`/`secret`/`ssl_verification` on `netbox_webhook`.
-- Carried deltas active at `v5.3.10`: previous set plus `webhook-tags-secret-ssl` (depends on go-netbox `v0.6.0`). See "The patches we carry" above for details.
+- Carried deltas active at `v5.3.10`: previous set plus `webhook-tags-secret-ssl` (go-netbox `v0.6.0`) and `cf-validation-float-json` (go-netbox `v0.6.1`). See "The patches we carry" above for details.
 - Conflicts encountered during the original Apr 2026 rebase: `go.sum` (every cherry-pick — resolved with `--ours` then `go mod tidy`), and one cherry-pick artifact in `netbox/resource_netbox_available_ip_address_test.go` (stray closing braces, caught by `go vet`).
 
 Tag scheme going forward: plain `vX.Y.Z` semver, monotonically increasing from our own release history. Don't try to anchor patch numbers to upstream's version — keep ours self-contained so downstream `~> 5` constraints resolve cleanly. The `-tenstorrent.<n>` prerelease scheme used in `v5.3.0-tenstorrent.0` was retired because it sorts below `v5.3.0` per SemVer prerelease rules, which is the opposite of what we want.
