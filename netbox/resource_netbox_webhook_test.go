@@ -109,6 +109,56 @@ func TestWebhookSecretFromAPI(t *testing.T) {
 	}
 }
 
+func TestWebhookSecretPointer(t *testing.T) {
+	if p := webhookSecretPointer(false, "", false); p != nil {
+		t.Fatal("unset secret must be omitted (nil), not sent as empty string")
+	}
+
+	p := webhookSecretPointer(true, "configured", false)
+	if p == nil || *p != "configured" {
+		t.Fatalf("configured secret: got %v", ptrVal(p))
+	}
+
+	p = webhookSecretPointer(true, "", false)
+	if p == nil || *p != "" {
+		t.Fatal("explicit secret = \"\" must send empty string to clear")
+	}
+
+	p = webhookSecretPointer(false, "", true)
+	if p == nil || *p != "" {
+		t.Fatal("removing secret from config must send empty string to clear")
+	}
+}
+
+func TestWebhookJSONOmitsNilSecret(t *testing.T) {
+	name := "kea-sync"
+	url := "https://example.com/webhook"
+	ssl := true
+	w := &models.Webhook{
+		Name:            &name,
+		PayloadURL:      &url,
+		SslVerification: &ssl,
+	}
+	b, err := json.Marshal(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got["secret"]; ok {
+		t.Fatalf("nil secret must be omitted from JSON, got %s", b)
+	}
+}
+
+func ptrVal(p *string) string {
+	if p == nil {
+		return "<nil>"
+	}
+	return *p
+}
+
 func TestAccNetboxWebhook_basic(t *testing.T) {
 	testName := testAccGetTestName("webhook_basic")
 	testPayloadURL := "https://example.com/webhook"

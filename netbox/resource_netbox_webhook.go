@@ -87,7 +87,6 @@ func webhookFromResourceData(d *schema.ResourceData, api *providerState) (*model
 	name := d.Get("name").(string)
 	payloadURL := d.Get("payload_url").(string)
 	ssl := d.Get("ssl_verification").(bool)
-	secret := d.Get("secret").(string)
 
 	tags, err := getNestedTagListFromResourceDataSet(api, d.Get(tagsAllKey))
 	if err != nil {
@@ -102,7 +101,7 @@ func webhookFromResourceData(d *schema.ResourceData, api *providerState) (*model
 		HTTPContentType:   getOptionalStr(d, "http_content_type", false),
 		AdditionalHeaders: getOptionalStr(d, "additional_headers", false),
 		CaFilePath:        strToPtr(getOptionalStr(d, "ca_file_path", false)),
-		Secret:            strToPtr(secret),
+		Secret:            webhookSecretForWrite(d),
 		SslVerification:   boolToPtr(ssl),
 		Tags:              tags,
 	}, nil
@@ -180,9 +179,11 @@ func resourceNetboxWebhookUpdate(d *schema.ResourceData, m interface{}) error {
 		return err
 	}
 
-	params := extras.NewExtrasWebhooksUpdateParams().WithID(id).WithData(data)
+	// PATCH so an omitted secret (nil / omitempty) is left untouched in NetBox.
+	// PUT would treat a missing field as "reset to default" and clear it.
+	params := extras.NewExtrasWebhooksPartialUpdateParams().WithID(id).WithData(data)
 
-	_, err = api.Extras.ExtrasWebhooksUpdate(params, nil)
+	_, err = api.Extras.ExtrasWebhooksPartialUpdate(params, nil)
 	if err != nil {
 		return err
 	}
@@ -205,6 +206,38 @@ func resourceNetboxWebhookDelete(d *schema.ResourceData, m interface{}) error {
 			}
 		}
 		return err
+	}
+	return nil
+}
+
+// webhookSecretForWrite returns the secret to send to NetBox.
+// nil omits the JSON field (leave NetBox unchanged). A pointer to "" is an
+// explicit clear. d.Get("secret") is "" both when unset and when set to "",
+// so we inspect raw config / HasChange instead of always sending a pointer.
+func webhookSecretForWrite(d *schema.ResourceData) *string {
+	return webhookSecretPointer(webhookSecretConfigured(d), d.Get("secret").(string), d.HasChange("secret"))
+}
+
+func webhookSecretConfigured(d *schema.ResourceData) bool {
+	cfg := d.GetRawConfig()
+	if cfg.IsNull() || !cfg.IsKnown() {
+		_, ok := d.GetOk("secret")
+		return ok
+	}
+	attr := cfg.GetAttr("secret")
+	return !attr.IsNull() && attr.IsKnown()
+}
+
+// webhookSecretPointer is the pure decision for tests: configured value
+// (including explicit "") is always sent; a change away from a previous
+// value with the attribute omitted is sent as ""; otherwise omit.
+func webhookSecretPointer(configured bool, value string, changed bool) *string {
+	if configured {
+		return strToPtr(value)
+	}
+	if changed {
+		empty := ""
+		return &empty
 	}
 	return nil
 }
