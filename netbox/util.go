@@ -14,6 +14,10 @@ func strToPtr(str string) *string {
 	return &str
 }
 
+func boolToPtr(b bool) *bool {
+	return &b
+}
+
 func int64ToPtr(i int64) *int64 {
 	return &i
 }

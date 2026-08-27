@@ -2,6 +2,7 @@ package netbox
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/fbreckle/go-netbox/netbox/client/extras"
 	"github.com/fbreckle/go-netbox/netbox/models"
@@ -61,6 +62,20 @@ func resourceNetboxWebhook() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
+			"secret": {
+				Type:      schema.TypeString,
+				Optional:  true,
+				Sensitive: true,
+				Description: "Shared secret used by NetBox to generate the HMAC-SHA512 `X-Hook-Signature` header. " +
+					"NetBox may omit or mask this value on read; Terraform keeps the configured secret in that case rather than reporting drift.",
+			},
+			"ssl_verification": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Default:     true,
+				Description: "Enable TLS certificate verification for the payload URL. Disable with caution.",
+			},
+			tagsKey: tagsSchema,
 		},
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
@@ -68,20 +83,38 @@ func resourceNetboxWebhook() *schema.Resource {
 	}
 }
 
+func webhookFromResourceData(d *schema.ResourceData, api *providerState) (*models.Webhook, error) {
+	name := d.Get("name").(string)
+	payloadURL := d.Get("payload_url").(string)
+	ssl := d.Get("ssl_verification").(bool)
+	secret := d.Get("secret").(string)
+
+	tags, err := getNestedTagListFromResourceDataSet(api, d.Get(tagsAllKey))
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.Webhook{
+		Name:              &name,
+		PayloadURL:        &payloadURL,
+		BodyTemplate:      d.Get("body_template").(string),
+		HTTPMethod:        getOptionalStr(d, "http_method", false),
+		HTTPContentType:   getOptionalStr(d, "http_content_type", false),
+		AdditionalHeaders: getOptionalStr(d, "additional_headers", false),
+		CaFilePath:        strToPtr(getOptionalStr(d, "ca_file_path", false)),
+		Secret:            strToPtr(secret),
+		SslVerification:   boolToPtr(ssl),
+		Tags:              tags,
+	}, nil
+}
+
 func resourceNetboxWebhookCreate(d *schema.ResourceData, m interface{}) error {
 	api := m.(*providerState)
 
-	data := &models.Webhook{}
-	name := d.Get("name").(string)
-	data.Name = &name
-	payloadURL := d.Get("payload_url").(string)
-	data.PayloadURL = &payloadURL
-	bodyTemplate := d.Get("body_template").(string)
-	data.BodyTemplate = bodyTemplate
-	data.HTTPMethod = getOptionalStr(d, "http_method", false)
-	data.HTTPContentType = getOptionalStr(d, "http_content_type", false)
-	data.AdditionalHeaders = getOptionalStr(d, "additional_headers", false)
-	data.CaFilePath = strToPtr(getOptionalStr(d, "ca_file_path", false))
+	data, err := webhookFromResourceData(d, api)
+	if err != nil {
+		return err
+	}
 
 	params := extras.NewExtrasWebhooksCreateParams().WithData(data)
 
@@ -121,6 +154,20 @@ func resourceNetboxWebhookRead(d *schema.ResourceData, m interface{}) error {
 	d.Set("additional_headers", webhook.AdditionalHeaders)
 	d.Set("ca_file_path", webhook.CaFilePath)
 
+	if webhook.SslVerification != nil {
+		d.Set("ssl_verification", *webhook.SslVerification)
+	} else {
+		d.Set("ssl_verification", true)
+	}
+
+	if webhook.Secret != nil {
+		if value, ok := webhookSecretFromAPI(*webhook.Secret); ok {
+			d.Set("secret", value)
+		}
+	}
+
+	api.readTags(d, webhook.Tags)
+
 	return nil
 }
 
@@ -128,23 +175,14 @@ func resourceNetboxWebhookUpdate(d *schema.ResourceData, m interface{}) error {
 	api := m.(*providerState)
 
 	id, _ := strconv.ParseInt(d.Id(), 10, 64)
-	data := models.Webhook{}
+	data, err := webhookFromResourceData(d, api)
+	if err != nil {
+		return err
+	}
 
-	name := d.Get("name").(string)
-	payloadURL := d.Get("payload_url").(string)
-	bodyTemplate := d.Get("body_template").(string)
+	params := extras.NewExtrasWebhooksUpdateParams().WithID(id).WithData(data)
 
-	data.Name = &name
-	data.PayloadURL = &payloadURL
-	data.BodyTemplate = bodyTemplate
-	data.HTTPMethod = getOptionalStr(d, "http_method", false)
-	data.HTTPContentType = getOptionalStr(d, "http_content_type", false)
-	data.AdditionalHeaders = getOptionalStr(d, "additional_headers", false)
-	data.CaFilePath = strToPtr(getOptionalStr(d, "ca_file_path", false))
-
-	params := extras.NewExtrasWebhooksUpdateParams().WithID(id).WithData(&data)
-
-	_, err := api.Extras.ExtrasWebhooksUpdate(params, nil)
+	_, err = api.Extras.ExtrasWebhooksUpdate(params, nil)
 	if err != nil {
 		return err
 	}
@@ -169,4 +207,18 @@ func resourceNetboxWebhookDelete(d *schema.ResourceData, m interface{}) error {
 		return err
 	}
 	return nil
+}
+
+// webhookSecretFromAPI decides whether an API-returned secret should overwrite
+// Terraform state. Empty and mask-only values (e.g. "********") mean NetBox
+// withheld the plaintext; returning ok=false leaves the configured secret in
+// state so refresh does not produce perpetual drift or clear it.
+func webhookSecretFromAPI(apiSecret string) (string, bool) {
+	if apiSecret == "" {
+		return "", false
+	}
+	if strings.Trim(apiSecret, "*") == "" {
+		return "", false
+	}
+	return apiSecret, true
 }
