@@ -195,6 +195,30 @@ When adding a new delta, copy this template:
 - **Related go-netbox change:** Commit "Add PrimaryMacAddress field to Interface and VMInterface models" on `msollanych-tt/go-netbox` master (tagged `v0.5.2`).
 - **Status:** Active
 
+#### `webhook-tags-secret-ssl` — `tags`, `secret`, and `ssl_verification` on `netbox_webhook`
+
+- **Type:** Feature
+- **Introduced:** 2026-08 (`v5.3.10`)
+- **Files:** `netbox/resource_netbox_webhook.go`, `netbox/resource_netbox_webhook_test.go`, `netbox/util.go`, `examples/resources/netbox_webhook/resource.tf`
+- **Tests:** `TestResourceNetboxWebhook_schema`, `TestWebhookJSONIncludesSSLVerificationFalse`, `TestWebhookSecretFromAPI`, `TestAccNetboxWebhook_tagsSecretSSL` (plus existing basic/update/import tests still cover configs that omit the new fields)
+- **Why:** Production webhook management (IT-2115 Kea DHCP reservation sync) needs tenant tags, an HMAC signing secret, and the ability to disable TLS verification for Tailscale short-name URLs. Provider 5.3.9 rejected `tags` as an unsupported argument, and go-netbox's non-pointer `SslVerification bool` with `omitempty` dropped `false` on the wire so NetBox kept the default `true`.
+- **What:** Adds optional `tags` (and computed `tags_all` via the existing provider convention), optional sensitive `secret`, and optional `ssl_verification` (default `true`). Create/Update share `webhookFromResourceData`, which always sends a non-nil `*bool` for SSL and a non-nil `*string` for secret so empty-string clears and `false` serializes. Read keeps the configured secret when NetBox omits or masks it. Companion go-netbox change adds `Tags` on `Webhook` and switches `Secret`/`SslVerification` to pointers.
+- **Upstream candidate:** Yes — clean candidate, blocked on upstream go-netbox accepting the Webhook model fields. Currently parked per user direction.
+- **Related go-netbox change:** Tagged `v0.6.0` on `msollanych-tt/go-netbox` master.
+- **Status:** Active
+
+#### `cf-validation-float-json` — CustomField validation bounds from JSON floats
+
+- **Type:** Bug fix (in `msollanych-tt/go-netbox`)
+- **Introduced:** 2026-08 (`v5.3.10`, go-netbox `v0.6.1`)
+- **Files:** `netbox/models/custom_field_unmarshal.go` in `msollanych-tt/go-netbox`. Provider `go.mod` `replace` bump only.
+- **Tests:** `TestCustomFieldUnmarshal_validationBoundsAcceptFloatJSON`, `TestAccNetboxCustomField_integer`
+- **Why:** NetBox 4.4.1+ serializes `validation_minimum` / `validation_maximum` as JSON floats (`10.0`). go-netbox models those fields as `*int64`, and `encoding/json` refuses to unmarshal a number with a decimal point into that type. `TestAccNetboxCustomField_integer` (and any real `netbox_custom_field` with bounds) failed on every 4.4.1+ CI matrix entry; 4.3.x and 4.4.0 still emit integers so they stayed green. Pre-existing on master; surfaced on this PR because the matrix still runs those versions.
+- **What:** Adds a `CustomField.UnmarshalJSON` that reads the two bounds via `json.Number` and stores them as `*int64`, so both `10` and `10.0` work. Writable request bodies stay `*int64`. Provider schema stays `TypeInt`.
+- **Upstream candidate:** Yes — file against `fbreckle/go-netbox` / regenerate against current swagger (`number` not `integer`). Currently parked per user direction.
+- **Related go-netbox change:** This is the go-netbox change itself. Tagged `v0.6.1` on `msollanych-tt/go-netbox` master.
+- **Status:** Active
+
 If the customer asks about more features, they land here too. New patches should land as discrete commits with descriptive messages so the next rebase is bearable, and they should add a block above with `Status: Active`.
 
 ## Repo layout reminders
@@ -401,12 +425,12 @@ If/when upstreaming resumes: branch any upstream PR off `upstream/master` direct
 
 ## Quick reference: state at last rebase
 
-Last rebase: **Apr 2026** (carried forward into `v5.3.4`, no new upstream rebase since `v5.3.3`). Patch releases `v5.3.5`, `v5.3.6`, `v5.3.7` added in May 2026, `v5.3.8` in Jun 2026, `v5.3.9` in Aug 2026 (no upstream rebase).
+Last rebase: **Apr 2026** (carried forward into `v5.3.4`, no new upstream rebase since `v5.3.3`). Patch releases `v5.3.5`, `v5.3.6`, `v5.3.7` added in May 2026, `v5.3.8` in Jun 2026, `v5.3.9`/`v5.3.10` in Aug 2026 (no upstream rebase).
 
 - Provider's `master` is upstream master at `8257f4d` ("test: add acceptance test for dns_name case drift") — upstream's tip 4 commits past tag `v5.3.0` — plus the carried tenstorrent patches.
-- go-netbox `master` carries five commits on top of upstream `53bc6c52`: the `Tenant` field on `WritableAvailableIP` (`ad4a0111`), the `device_type_id` / `module_type_id` query-param fix on the dcim templates list endpoints (`af097a32`), the `default_platform` + `exclude_from_utilization` fields on `WritableDeviceType` / `DeviceType` (`cc70b0e9`), the `ui_visible` JSON tag fix on `WritableCustomField`, and the `PrimaryMacAddress` field on Interface/VMInterface models. Tagged `v0.5.2`. The provider's `go.mod` `replace` line points to `v0.5.2`.
-- Tagged releases on the provider: `v5.3.0-tenstorrent.0` and `v5.3.0-tenstorrent-rc1` (legacy scheme, kept on origin), then `v5.3.1`, `v5.3.2`, `v5.3.3`, `v5.3.4`, `v5.3.5`, `v5.3.6`, `v5.3.7`, `v5.3.8`, `v5.3.9` (current scheme). `v5.3.5` introduced `shuffle_mode` on `netbox_available_ip_address`; `v5.3.6` made `shuffle_mode` non-replacing on update; `v5.3.7` is the "ip_range tenant on Create + JSON CF coercion" release; `v5.3.8` is "contact/custom_field enhancements"; `v5.3.9` is "primary MAC on netbox_mac_address".
-- Carried deltas active at `v5.3.9`: `release-workflow-permissions`, `available-ip-tenant`, `service-43-parent`, `cf-null-clearing`, `device-type-nested-templates`, `dcim-templates-list-filter-param` (in go-netbox `v0.4.0`+), `device-type-templates-examples`, `device-type-extended-fields`, `available-ip-shuffle-mode`, `ip-range-create-tenant`, `cf-json-coercion`, `contact-group-contact-role-contact-custom-field-enhancements` (depends on go-netbox `v0.5.1`), `primary-mac` (depends on go-netbox `v0.5.2`). See "The patches we carry" above for details.
+- go-netbox `master` carries the v0.5.2 patches plus Webhook `Tags` / pointer `Secret` / pointer `SslVerification` (`v0.6.0`) and CustomField validation-bound float JSON unmarshaling (`v0.6.1`). The provider's `go.mod` `replace` line points to `v0.6.1`.
+- Tagged releases on the provider: `v5.3.0-tenstorrent.0` and `v5.3.0-tenstorrent-rc1` (legacy scheme, kept on origin), then `v5.3.1` through `v5.3.10` (current scheme). `v5.3.10` is `tags`/`secret`/`ssl_verification` on `netbox_webhook`.
+- Carried deltas active at `v5.3.10`: previous set plus `webhook-tags-secret-ssl` (go-netbox `v0.6.0`) and `cf-validation-float-json` (go-netbox `v0.6.1`). See "The patches we carry" above for details.
 - Conflicts encountered during the original Apr 2026 rebase: `go.sum` (every cherry-pick — resolved with `--ours` then `go mod tidy`), and one cherry-pick artifact in `netbox/resource_netbox_available_ip_address_test.go` (stray closing braces, caught by `go vet`).
 
 Tag scheme going forward: plain `vX.Y.Z` semver, monotonically increasing from our own release history. Don't try to anchor patch numbers to upstream's version — keep ours self-contained so downstream `~> 5` constraints resolve cleanly. The `-tenstorrent.<n>` prerelease scheme used in `v5.3.0-tenstorrent.0` was retired because it sorts below `v5.3.0` per SemVer prerelease rules, which is the opposite of what we want.

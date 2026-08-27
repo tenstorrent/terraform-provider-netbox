@@ -17,9 +17,12 @@ From the [official documentation](https://docs.netbox.dev/en/stable/integrations
 
 ```terraform
 resource "netbox_webhook" "test" {
-  name         = "test"
-  payload_url  = "https://example.com/webhook"
-  bodytemplate = "Sample body"
+  name             = "test"
+  payload_url      = "https://example.com/webhook"
+  body_template    = "Sample body"
+  tags             = ["internal-infra"]
+  secret           = "replace-me"
+  ssl_verification = false
 }
 ```
 
@@ -38,9 +41,13 @@ resource "netbox_webhook" "test" {
 - `ca_file_path` (String)
 - `http_content_type` (String) The complete list of official content types is available [here](https://www.iana.org/assignments/media-types/media-types.xhtml). Defaults to `application/json`.
 - `http_method` (String) Valid values are `GET`, `POST`, `PUT`, `PATCH` and `DELETE`. Defaults to `POST`.
+- `secret` (String, Sensitive) Shared secret used by NetBox to generate the HMAC-SHA512 `X-Hook-Signature` header. NetBox may omit or mask this value on read; Terraform keeps the configured secret in that case rather than reporting drift.
+- `ssl_verification` (Boolean) Enable TLS certificate verification for the payload URL. Disable with caution. Defaults to `true`.
+- `tags` (Set of String)
 
 ### Read-Only
 
 - `id` (String) The ID of this resource.
+- `tags_all` (Set of String)
 
 
